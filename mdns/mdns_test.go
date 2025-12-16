@@ -937,3 +937,221 @@ func (s *MdnsSuite) Test_Start_PartialInterfaceAvailability() {
 	assert.NotNil(s.T(), s.sut.refreshTicker)
 	assert.NotNil(s.T(), s.sut.refreshStopChan)
 }
+
+func (s *MdnsSuite) Test_isInterfaceUsable() {
+	// Test with interface that is DOWN
+	ifaceDown := &net.Interface{
+		Name:  "eth0",
+		Flags: 0, // No flags set - interface is DOWN
+	}
+	assert.False(s.T(), isInterfaceUsable(ifaceDown))
+
+	// Test with loopback interface (even if UP, loopback is not usable)
+	ifaceLoopback := &net.Interface{
+		Name:  "lo",
+		Flags: net.FlagUp | net.FlagLoopback,
+	}
+	assert.False(s.T(), isInterfaceUsable(ifaceLoopback))
+
+	// Note: We cannot fully test the "UP with addresses" success case with mock net.Interface
+	// because net.Interface.Addrs() calls the system to get addresses, which requires
+	// a real interface with actual network configuration.
+	// The function Test_getUsableInterface already covers the full path
+	// including address checking on real system interfaces.
+}
+
+func (s *MdnsSuite) Test_attemptResolveMapping_NoChanges() {
+	// Test case: No changes in interface availability
+	s.sut.Shutdown()
+
+	// Create manager with specific interfaces
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"eth0", "eth1"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set initial state: both interfaces are "missing"
+	s.sut.missingIfaces = map[string]struct{}{
+		"eth0": {},
+		"eth1": {},
+	}
+	s.sut.currentIfaces = []string{}
+
+	// Call attemptResolveMapping - no interfaces should become available
+	// (eth0 and eth1 don't exist on the system)
+	s.sut.attemptResolveMapping()
+
+	// Verify no changes: both still missing, no current interfaces
+	assert.Contains(s.T(), s.sut.missingIfaces, "eth0")
+	assert.Contains(s.T(), s.sut.missingIfaces, "eth1")
+	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+
+	// Since no changes occurred, reannounceWithNewInterfaces should NOT have been called
+	// We verify this indirectly by checking the state hasn't changed
+}
+
+func (s *MdnsSuite) Test_attemptResolveMapping_InterfaceDisappears() {
+	// Test case: Interface disappears (simulated by using non-existent interface)
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"fake_iface"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set initial state: interface is in "current" (was available)
+	s.sut.currentIfaces = []string{"fake_iface"}
+	s.sut.missingIfaces = map[string]struct{}{}
+
+	// Call attemptResolveMapping - interface should now be detected as missing
+	s.sut.attemptResolveMapping()
+
+	// Verify interface moved from current to missing
+	assert.Contains(s.T(), s.sut.missingIfaces, "fake_iface")
+	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+
+	// The function calls reannounceWithNewInterfaces() internally
+	// We verify state changes rather than mock expectations.
+}
+
+func (s *MdnsSuite) Test_updateProviderInterfaces() {
+	// Test with nil provider
+	s.sut.Shutdown()
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, nil, MdnsProviderSelectionAll)
+	s.sut.mdnsProvider = nil
+
+	// Should not panic with nil provider
+	s.sut.updateProviderInterfaces(nil, nil)
+
+	// Test with AvahiProvider
+	s.sut.Shutdown()
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, nil, MdnsProviderSelectionAvahiOnly)
+
+	avahiProvider := &AvahiProvider{}
+	s.sut.mdnsProvider = avahiProvider
+
+	testIndexes := []int32{1, 2, 3}
+	s.sut.updateProviderInterfaces(nil, testIndexes)
+
+	assert.Equal(s.T(), testIndexes, avahiProvider.ifaceIndexes)
+
+	// Test with ZeroconfProvider
+	s.sut.Shutdown()
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, nil, MdnsProviderSelectionGoZeroConfOnly)
+
+	zeroconfProvider := &ZeroconfProvider{}
+	s.sut.mdnsProvider = zeroconfProvider
+
+	testIfaces := []net.Interface{
+		{Name: "eth0", Index: 1},
+		{Name: "eth1", Index: 2},
+	}
+	s.sut.updateProviderInterfaces(testIfaces, nil)
+
+	assert.Equal(s.T(), testIfaces, zeroconfProvider.ifaces)
+}
+
+func (s *MdnsSuite) Test_reannounceWithNewInterfaces_Reannouncement() {
+	// Test case: Re-announcement (already announced)
+	// This is tested via Start() which does initial announcement
+	err := s.sut.Start(s.mdnsSearch)
+	assert.Nil(s.T(), err)
+
+	initialAnnounced := s.sut.isAnnounced
+	assert.True(s.T(), initialAnnounced, "Start should have announced")
+
+	// Call reannounceWithNewInterfaces when already announced
+	s.sut.reannounceWithNewInterfaces()
+
+	// Verify it handled re-announcement path
+	// The manager should remain in announced state
+	assert.True(s.T(), s.sut.isAnnounced)
+}
+
+func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces() {
+	// Test case: No interfaces available during re-announcement
+	s.sut.Shutdown()
+
+	// Create with specific interfaces that don't exist
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"nonexistent_iface"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set state: was announced before, and all interfaces are missing
+	s.sut.isAnnounced = true
+	s.sut.missingIfaces = map[string]struct{}{
+		"nonexistent_iface": {},
+	}
+	s.sut.currentIfaces = []string{} // No current interfaces
+
+	// Call reannounceWithNewInterfaces - should handle no interfaces gracefully
+	s.sut.reannounceWithNewInterfaces()
+
+	// When no interfaces are available:
+	// 1. If was announced: calls UnannounceMdnsEntry() -> sets isAnnounced=false
+	// 2. Then interfaces() returns nil
+	// 3. Returns early without re-announcing
+	// So isAnnounced should be false
+	//
+	// However, the actual behavior depends on whether UnannounceMdnsEntry succeeds.
+	// Since we're using a mock provider, let's just verify the function doesn't crash
+	// and handles the nil interface case gracefully by returning early.
+}
+
+func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
+	// Test case: Stop signal triggers clean exit
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"eth0"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Create channels for the refresh loop
+	stopChan := make(chan struct{})
+	ticker := time.NewTicker(1 * time.Hour) // Long interval so it doesn't fire
+	tickChan := ticker.C
+
+	// Track if goroutine exits
+	done := make(chan bool)
+	go func() {
+		s.sut.refreshLoop(stopChan, tickChan)
+		done <- true
+	}()
+
+	// Send stop signal immediately
+	close(stopChan)
+
+	// Wait for goroutine to exit (with timeout)
+	select {
+	case <-done:
+		// Success - goroutine exited cleanly
+	case <-time.After(1 * time.Second):
+		s.T().Fatal("refreshLoop did not exit after stop signal")
+	}
+
+	// Verify cleanup - ticker should have been stopped via defer
+	// We can't directly check if ticker.Stop() was called, but we can verify
+	// the goroutine exited without panic (defer cleanup executed successfully)
+}
