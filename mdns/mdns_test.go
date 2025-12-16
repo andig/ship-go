@@ -166,10 +166,20 @@ func (s *MdnsSuite) Test_Start_IFaces() {
 func (s *MdnsSuite) Test_Start_IFaces_Invalid() {
 	s.sut.ifaces = []string{"noifacename"}
 	err := s.sut.Start(s.mdnsSearch)
-	assert.NotNil(s.T(), err)
+	// Start should succeed even with invalid interfaces
+	// but should NOT announce (no fallback to all interfaces)
+	assert.Nil(s.T(), err)
+
+	// Verify the interface was marked as missing
+	assert.Contains(s.T(), s.sut.missingIfaces, "noifacename")
+
+	// Verify the service is NOT announced
+	assert.False(s.T(), s.sut.isAnnounced)
 
 	s.sut.SetAutoAccept(true)
 	assert.Equal(s.T(), true, s.sut.autoaccept)
+
+	s.sut.Shutdown()
 }
 
 func (s *MdnsSuite) Test_Shutdown_Start() {
@@ -495,7 +505,7 @@ func (s *MdnsSuite) Test_ProviderZeroconfOnly_Success() {
 }
 
 func (s *MdnsSuite) Test_Start_InterfaceResolutionError() {
-	// Test error handling when interface resolution fails
+	// Test that Start succeeds gracefully even when interface resolution fails
 	s.sut.Shutdown()
 
 	// Create manager with invalid interface name
@@ -505,10 +515,21 @@ func (s *MdnsSuite) Test_Start_InterfaceResolutionError() {
 		"shipid", "serviceName",
 		4729, []string{"nonexistentinterface"}, MdnsProviderSelectionAll)
 
-	// Start should fail due to invalid interface
+	// Start should succeed but NOT announce (no fallback to all interfaces)
 	err := s.sut.Start(s.mdnsSearch)
-	assert.NotNil(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "no such network interface")
+	assert.Nil(s.T(), err)
+
+	// Verify the nonexistent interface was tracked as missing
+	assert.Contains(s.T(), s.sut.missingIfaces, "nonexistentinterface")
+
+	// Verify the service is NOT announced
+	assert.False(s.T(), s.sut.isAnnounced)
+
+	// Verify the refresh goroutine was started (because we have missing interfaces)
+	assert.NotNil(s.T(), s.sut.refreshTicker)
+	assert.NotNil(s.T(), s.sut.refreshStopChan)
+
+	s.sut.Shutdown()
 }
 
 func (s *MdnsSuite) Test_Start_AnnouncementFailure() {
@@ -822,4 +843,97 @@ func (s *MdnsSuite) Test_Shutdown_DefensiveProgramming() {
 
 	// Verify provider is cleaned up (defensive shutdown succeeded)
 	assert.Nil(s.T(), manager.mdnsProvider)
+}
+
+func (s *MdnsSuite) Test_getUsableInterface() {
+	// we don't have access to iface names on CI
+	if util.IsRunningOnCI() {
+		return
+	}
+
+	// Test with valid interface
+	ifaces, err := net.Interfaces()
+	assert.Nil(s.T(), err)
+	assert.NotEqual(s.T(), 0, len(ifaces))
+
+	// Find a usable interface (UP, not loopback, has addresses)
+	var usableIfaceName string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 &&
+			iface.Flags&net.FlagLoopback == 0 {
+			addrs, _ := iface.Addrs()
+			if len(addrs) > 0 {
+				usableIfaceName = iface.Name
+				break
+			}
+		}
+	}
+
+	if usableIfaceName != "" {
+		iface, usable := getUsableInterface(usableIfaceName)
+		assert.True(s.T(), usable)
+		assert.NotNil(s.T(), iface)
+		assert.Equal(s.T(), usableIfaceName, iface.Name)
+	}
+
+	// Test with invalid interface name
+	iface, usable := getUsableInterface("nonexistent_interface_12345")
+	assert.False(s.T(), usable)
+	assert.Nil(s.T(), iface)
+}
+
+func (s *MdnsSuite) Test_Start_PartialInterfaceAvailability() {
+	// we don't have access to iface names on CI
+	if util.IsRunningOnCI() {
+		return
+	}
+
+	s.sut.Shutdown()
+
+	// Get a valid interface
+	ifaces, err := net.Interfaces()
+	assert.Nil(s.T(), err)
+	assert.NotEqual(s.T(), 0, len(ifaces))
+
+	// Find a usable interface
+	var usableIfaceName string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 &&
+			iface.Flags&net.FlagLoopback == 0 {
+			addrs, _ := iface.Addrs()
+			if len(addrs) > 0 {
+				usableIfaceName = iface.Name
+				break
+			}
+		}
+	}
+
+	if usableIfaceName == "" {
+		s.T().Skip("No usable network interface found for testing")
+		return
+	}
+
+	// Mix valid and invalid interfaces
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{usableIfaceName, "nonexistent_iface"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Start should succeed and announce on available interface
+	err = s.sut.Start(s.mdnsSearch)
+	assert.Nil(s.T(), err)
+	assert.True(s.T(), s.sut.isAnnounced) // Should announce on partial availability
+
+	// Verify valid interface resolved
+	assert.Equal(s.T(), 1, len(s.sut.currentIfaces))
+	assert.Contains(s.T(), s.sut.currentIfaces, usableIfaceName)
+
+	// Verify invalid interface tracked as missing
+	assert.Contains(s.T(), s.sut.missingIfaces, "nonexistent_iface")
+
+	// Verify refresh goroutine started (because one interface missing)
+	assert.NotNil(s.T(), s.sut.refreshTicker)
+	assert.NotNil(s.T(), s.sut.refreshStopChan)
 }

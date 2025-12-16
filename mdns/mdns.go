@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/enbility/go-avahi"
 	"github.com/enbility/ship-go/api"
@@ -100,6 +101,13 @@ type MdnsManager struct {
 	signalHandlerMux sync.Mutex
 	signalOnce       sync.Once
 
+	// Interface refresh state for continuous monitoring
+	currentIfaces   []string            // Currently resolved interface names
+	missingIfaces   map[string]struct{} // Interfaces not resolved
+	refreshTicker   *time.Ticker        // Periodic retry timer
+	refreshStopChan chan struct{}       // Signal to stop refresh goroutine
+	refreshMux      sync.Mutex          // Protects refresh operations
+
 	mux,
 	muxAnnounced sync.Mutex
 }
@@ -156,26 +164,78 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 	var ifaces []net.Interface
 	var ifaceIndexes []int32
 
-	if len(m.ifaces) > 0 {
-		ifaces = make([]net.Interface, len(m.ifaces))
-		ifaceIndexes = make([]int32, len(m.ifaces))
-		for i, ifaceName := range m.ifaces {
-			iface, err := net.InterfaceByName(ifaceName)
-			if err != nil {
-				return nil, nil, err
-			}
-			ifaces[i] = *iface
-			// conversion is safe, as the index is always positive and not higher than int32
-			ifaceIndexes[i] = int32(iface.Index) // #nosec G115
+	if len(m.ifaces) == 0 {
+		// No specific interfaces configured, use all
+		return nil, []int32{avahi.InterfaceUnspec}, nil
+	}
+
+	// Initialize trackers
+	if m.missingIfaces == nil {
+		m.missingIfaces = make(map[string]struct{})
+	}
+	if m.currentIfaces == nil {
+		m.currentIfaces = make([]string, 0)
+	}
+
+	// Try to resolve each interface - DON'T FAIL if some missing
+	for _, ifaceName := range m.ifaces {
+		iface, usable := getUsableInterface(ifaceName)
+		if !usable {
+			// Track as missing, but continue
+			m.missingIfaces[ifaceName] = struct{}{}
+			logging.Log().Debugf("mdns: interface %s not available or not usable", ifaceName)
+			continue
 		}
+
+		// Successfully resolved
+		delete(m.missingIfaces, ifaceName)
+		m.currentIfaces = append(m.currentIfaces, ifaceName) // Track current
+		ifaces = append(ifaces, *iface)
+		// conversion is safe, as the index is always positive and not higher than int32
+		ifaceIndexes = append(ifaceIndexes, int32(iface.Index)) // #nosec G115
 	}
 
+	// If NO interfaces resolved, indicate no interfaces available (don't announce)
 	if len(ifaces) == 0 {
-		ifaces = nil
-		ifaceIndexes = []int32{avahi.InterfaceUnspec}
+		logging.Log().Infof("mdns: none of the %d required interfaces are available, will retry", len(m.ifaces))
+		return nil, nil, nil
 	}
 
+	logging.Log().Infof("mdns: using %d of %d required interfaces", len(ifaces), len(m.ifaces))
 	return ifaces, ifaceIndexes, nil
+}
+
+// isInterfaceUsable checks if a network interface is usable for mDNS
+func isInterfaceUsable(iface *net.Interface) bool {
+	// Must be UP
+	if iface.Flags&net.FlagUp == 0 {
+		return false
+	}
+	// Must not be loopback
+	if iface.Flags&net.FlagLoopback != 0 {
+		return false
+	}
+	// Must have at least one address
+	addrs, err := iface.Addrs()
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	return true
+}
+
+// getUsableInterface attempts to get an interface by name and checks if it's usable.
+// Returns the interface and true if found and usable, nil and false otherwise.
+func getUsableInterface(ifaceName string) (*net.Interface, bool) {
+	iface, err := net.InterfaceByName(ifaceName)
+	if err != nil {
+		return nil, false
+	}
+
+	if !isInterfaceUsable(iface) {
+		return nil, false
+	}
+
+	return iface, true
 }
 
 var _ api.MdnsInterface = (*MdnsManager)(nil)
@@ -220,9 +280,14 @@ func (m *MdnsManager) Start(cb api.MdnsReportInterface) error {
 		return fmt.Errorf("failed to initialize any mDNS provider (selection: %d)", m.providerSelection)
 	}
 
-	// on startup always start mDNS announcement
-	if err := m.AnnounceMdnsEntry(); err != nil {
-		return err
+	// Only announce if we have interfaces available
+	if ifaces != nil || ifaceIndexes != nil {
+		// on startup start mDNS announcement
+		if err := m.AnnounceMdnsEntry(); err != nil {
+			return err
+		}
+	} else {
+		logging.Log().Info("mdns: no interfaces available, skipping initial announcement")
 	}
 
 	// Set up signal handler only once
@@ -239,13 +304,180 @@ func (m *MdnsManager) Start(cb api.MdnsReportInterface) error {
 		}()
 	})
 
+	// Start interface monitoring if specific interfaces are configured
+	if len(m.ifaces) > 0 {
+		logging.Log().Debug("mdns: starting interface monitoring")
+		m.startInterfaceRefresh()
+	}
+
 	return nil
+}
+
+// startInterfaceRefresh starts the background goroutine for monitoring interface changes
+func (m *MdnsManager) startInterfaceRefresh() {
+	m.refreshMux.Lock()
+	defer m.refreshMux.Unlock()
+
+	if m.refreshTicker != nil {
+		return // Already running
+	}
+
+	m.refreshStopChan = make(chan struct{})
+	m.refreshTicker = time.NewTicker(15 * time.Second)
+
+	// Capture channels for goroutine to avoid race conditions
+	stopChan := m.refreshStopChan
+	tickChan := m.refreshTicker.C
+
+	go m.refreshLoop(stopChan, tickChan)
+}
+
+// refreshLoop is the background goroutine that periodically checks for interface changes
+func (m *MdnsManager) refreshLoop(stopChan <-chan struct{}, tickChan <-chan time.Time) {
+	defer func() {
+		m.refreshMux.Lock()
+		if m.refreshTicker != nil {
+			m.refreshTicker.Stop()
+		}
+		m.refreshMux.Unlock()
+	}()
+
+	for {
+		select {
+		case <-stopChan:
+			return
+		case <-tickChan:
+			m.attemptResolveMapping()
+		}
+	}
+}
+
+// attemptResolveMapping checks for interface changes and triggers re-announcement if needed
+func (m *MdnsManager) attemptResolveMapping() {
+	m.refreshMux.Lock()
+
+	// Build current state: which interfaces are usable NOW
+	currentlyAvailable := make(map[string]bool)
+	for _, ifaceName := range m.ifaces {
+		if _, usable := getUsableInterface(ifaceName); usable {
+			currentlyAvailable[ifaceName] = true
+		}
+	}
+
+	// Detect changes from last known state
+	var appeared []string
+	var disappeared []string
+
+	// Check for newly appeared interfaces
+	for ifaceName := range currentlyAvailable {
+		if _, wasMissing := m.missingIfaces[ifaceName]; wasMissing {
+			appeared = append(appeared, ifaceName)
+			delete(m.missingIfaces, ifaceName)
+		}
+	}
+
+	// Check for disappeared interfaces
+	for _, ifaceName := range m.currentIfaces {
+		if !currentlyAvailable[ifaceName] {
+			disappeared = append(disappeared, ifaceName)
+			m.missingIfaces[ifaceName] = struct{}{}
+		}
+	}
+
+	// Update current state
+	m.currentIfaces = make([]string, 0, len(currentlyAvailable))
+	for ifaceName := range currentlyAvailable {
+		m.currentIfaces = append(m.currentIfaces, ifaceName)
+	}
+
+	hasChanges := len(appeared) > 0 || len(disappeared) > 0
+
+	m.refreshMux.Unlock()
+
+	if hasChanges {
+		if len(appeared) > 0 {
+			logging.Log().Infof("mdns: interfaces appeared: %v", appeared)
+		}
+		if len(disappeared) > 0 {
+			logging.Log().Infof("mdns: interfaces disappeared: %v", disappeared)
+		}
+		m.reannounceWithNewInterfaces()
+	}
+}
+
+// reannounceWithNewInterfaces re-announces the service with the updated interface list
+func (m *MdnsManager) reannounceWithNewInterfaces() {
+	m.muxAnnounced.Lock()
+	wasAnnounced := m.isAnnounced
+	m.muxAnnounced.Unlock()
+
+	// If we weren't announced (because no interfaces were available at start),
+	// this is actually our FIRST announcement, not a re-announcement
+	if !wasAnnounced {
+		logging.Log().Info("mdns: making first announcement now that interfaces are available")
+		// Don't call Unannounce since we were never announced
+	} else {
+		// Unannounce current service before re-announcing
+		m.UnannounceMdnsEntry()
+	}
+
+	// Re-resolve interfaces (will pick up newly available ones)
+	ifaces, ifaceIndexes, err := m.interfaces()
+	if err != nil || (ifaces == nil && ifaceIndexes == nil) {
+		logging.Log().Debug("mdns: still no interfaces available during refresh")
+		return
+	}
+
+	// Update provider with new interface list
+	m.updateProviderInterfaces(ifaces, ifaceIndexes)
+
+	// Announce (or re-announce)
+	if err := m.AnnounceMdnsEntry(); err != nil {
+		logging.Log().Debug("mdns: announcement failed:", err)
+		return
+	}
+
+	if !wasAnnounced {
+		logging.Log().Info("mdns: successfully made first announcement")
+	} else {
+		logging.Log().Info("mdns: successfully re-announced with new interfaces")
+	}
+}
+
+// updateProviderInterfaces updates the provider's interface list
+func (m *MdnsManager) updateProviderInterfaces(ifaces []net.Interface, ifaceIndexes []int32) {
+	// Update provider's interface list
+	switch provider := m.mdnsProvider.(type) {
+	case *AvahiProvider:
+		provider.ifaceIndexes = ifaceIndexes
+	case *ZeroconfProvider:
+		provider.ifaces = ifaces
+	}
+}
+
+// stopInterfaceRefresh stops the interface monitoring goroutine
+func (m *MdnsManager) stopInterfaceRefresh() {
+	m.refreshMux.Lock()
+	defer m.refreshMux.Unlock()
+
+	if m.refreshStopChan != nil {
+		close(m.refreshStopChan)
+		m.refreshStopChan = nil
+	}
+
+	if m.refreshTicker != nil {
+		m.refreshTicker.Stop()
+		m.refreshTicker = nil
+	}
 }
 
 // Shutdown all of mDNS
 func (m *MdnsManager) Shutdown() {
 	m.shutdownOnce.Do(func() {
 		logging.Log().Debug("mdns: shutting down mDNS manager")
+
+		// Stop interface refresh goroutine first
+		m.stopInterfaceRefresh()
 
 		// Safely unannounce the service
 		func() {
