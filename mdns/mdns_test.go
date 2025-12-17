@@ -964,28 +964,29 @@ func (s *MdnsSuite) Test_attemptResolveMapping_NoChanges() {
 	// Test case: No changes in interface availability
 	s.sut.Shutdown()
 
-	// Create manager with specific interfaces
+	// Create manager with specific interfaces that definitely don't exist
+	// Use obviously fake names to ensure they won't exist on any system
 	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
-		4729, []string{"eth0", "eth1"}, MdnsProviderSelectionAll)
+		4729, []string{"fake_iface_12345", "nonexistent_iface_67890"}, MdnsProviderSelectionAll)
 	s.sut.SetTestProvider(s.mdnsProvider)
 
 	// Set initial state: both interfaces are "missing"
 	s.sut.missingIfaces = map[string]struct{}{
-		"eth0": {},
-		"eth1": {},
+		"fake_iface_12345":       {},
+		"nonexistent_iface_67890": {},
 	}
 	s.sut.currentIfaces = []string{}
 
 	// Call attemptResolveMapping - no interfaces should become available
-	// (eth0 and eth1 don't exist on the system)
+	// (these fake interfaces don't exist on any system)
 	s.sut.attemptResolveMapping()
 
 	// Verify no changes: both still missing, no current interfaces
-	assert.Contains(s.T(), s.sut.missingIfaces, "eth0")
-	assert.Contains(s.T(), s.sut.missingIfaces, "eth1")
+	assert.Contains(s.T(), s.sut.missingIfaces, "fake_iface_12345")
+	assert.Contains(s.T(), s.sut.missingIfaces, "nonexistent_iface_67890")
 	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
 
 	// Since no changes occurred, reannounceWithNewInterfaces should NOT have been called
@@ -1125,7 +1126,7 @@ func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
-		4729, []string{"eth0"}, MdnsProviderSelectionAll)
+		4729, []string{"fake_test_iface"}, MdnsProviderSelectionAll)
 	s.sut.SetTestProvider(s.mdnsProvider)
 
 	// Create channels for the refresh loop
