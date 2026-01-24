@@ -27,6 +27,23 @@ func NewZeroconfProvider(ifaces []net.Interface) *ZeroconfProvider {
 	}
 }
 
+// SetIfaces updates the interface list in a thread-safe manner
+func (z *ZeroconfProvider) SetIfaces(ifaces []net.Interface) {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	z.ifaces = ifaces
+}
+
+// getIfaces returns a copy of the interface list in a thread-safe manner
+func (z *ZeroconfProvider) getIfaces() []net.Interface {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	// Return a copy to avoid race conditions
+	ifacesCopy := make([]net.Interface, len(z.ifaces))
+	copy(ifacesCopy, z.ifaces)
+	return ifacesCopy
+}
+
 var _ api.MdnsProviderInterface = (*ZeroconfProvider)(nil)
 
 func (z *ZeroconfProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
@@ -51,7 +68,8 @@ func (z *ZeroconfProvider) Announce(serviceName string, port int, txt []string) 
 
 	// use Zeroconf library if avahi is not available
 	// Set TTL to 2 minutes as defined in SHIP chapter 7
-	mDNSServer, err := zeroconf.Register(serviceName, shipZeroConfServiceType, shipZeroConfDomain, port, txt, z.ifaces, zeroconf.TTL(120))
+	ifaces := z.getIfaces()
+	mDNSServer, err := zeroconf.Register(serviceName, shipZeroConfServiceType, shipZeroConfDomain, port, txt, ifaces, zeroconf.TTL(120))
 	if err != nil {
 		return err
 	}
@@ -85,8 +103,10 @@ func (z *ZeroconfProvider) chanListener(cb api.MdnsResolveCB) {
 	z.ctx, z.cancel = context.WithCancel(context.Background())
 	z.mux.Unlock()
 
+	// Get a thread-safe copy of interfaces
+	ifaces := z.getIfaces()
 	go func() {
-		_ = zeroconf.Browse(z.ctx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(z.ifaces))
+		_ = zeroconf.Browse(z.ctx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(ifaces))
 	}()
 
 	for {

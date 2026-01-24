@@ -960,6 +960,41 @@ func (s *MdnsSuite) Test_isInterfaceUsable() {
 	// including address checking on real system interfaces.
 }
 
+func (s *MdnsSuite) Test_interfaces_ResetsPreviousState() {
+	// Test that interfaces() resets trackers on each call to prevent duplicates
+	// This addresses the bug where calling interfaces() multiple times would
+	// append duplicates to currentIfaces instead of resetting it
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"fake_iface_1", "fake_iface_2"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// First call to interfaces() - should initialize trackers
+	_, _, _ = s.sut.interfaces()
+
+	// Both interfaces should be in missingIfaces (they don't exist)
+	assert.Equal(s.T(), 2, len(s.sut.missingIfaces))
+	assert.Contains(s.T(), s.sut.missingIfaces, "fake_iface_1")
+	assert.Contains(s.T(), s.sut.missingIfaces, "fake_iface_2")
+	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+
+	// Second call to interfaces() - should reset trackers, not append
+	_, _, _ = s.sut.interfaces()
+
+	// Verify no duplicates - still exactly 2 missing interfaces
+	assert.Equal(s.T(), 2, len(s.sut.missingIfaces))
+	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+
+	// Third call - same result, no accumulation
+	_, _, _ = s.sut.interfaces()
+	assert.Equal(s.T(), 2, len(s.sut.missingIfaces))
+	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+}
+
 func (s *MdnsSuite) Test_attemptResolveMapping_NoChanges() {
 	// Test case: No changes in interface availability
 	s.sut.Shutdown()
@@ -1046,7 +1081,7 @@ func (s *MdnsSuite) Test_updateProviderInterfaces() {
 	testIndexes := []int32{1, 2, 3}
 	s.sut.updateProviderInterfaces(nil, testIndexes)
 
-	assert.Equal(s.T(), testIndexes, avahiProvider.ifaceIndexes)
+	assert.Equal(s.T(), testIndexes, avahiProvider.getIfaceIndexes())
 
 	// Test with ZeroconfProvider
 	s.sut.Shutdown()
@@ -1065,7 +1100,7 @@ func (s *MdnsSuite) Test_updateProviderInterfaces() {
 	}
 	s.sut.updateProviderInterfaces(testIfaces, nil)
 
-	assert.Equal(s.T(), testIfaces, zeroconfProvider.ifaces)
+	assert.Equal(s.T(), testIfaces, zeroconfProvider.getIfaces())
 }
 
 func (s *MdnsSuite) Test_reannounceWithNewInterfaces_Reannouncement() {

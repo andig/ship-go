@@ -60,6 +60,23 @@ func NewAvahiProvider(ifaceIndexes []int32) *AvahiProvider {
 	}
 }
 
+// SetIfaceIndexes updates the interface indexes in a thread-safe manner
+func (a *AvahiProvider) SetIfaceIndexes(ifaceIndexes []int32) {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+	a.ifaceIndexes = ifaceIndexes
+}
+
+// getIfaceIndexes returns a copy of the interface indexes in a thread-safe manner
+func (a *AvahiProvider) getIfaceIndexes() []int32 {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+	// Return a copy to avoid race conditions
+	indexesCopy := make([]int32, len(a.ifaceIndexes))
+	copy(indexesCopy, a.ifaceIndexes)
+	return indexesCopy
+}
+
 var _ api.MdnsProviderInterface = (*AvahiProvider)(nil)
 
 func (a *AvahiProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
@@ -198,6 +215,7 @@ func (a *AvahiProvider) Announce(serviceName string, port int, txt []string) err
 		return err
 	}
 
+	// We already hold a.mux lock, so access ifaceIndexes directly
 	for _, iface := range a.ifaceIndexes {
 		// conversion is safe, as port values are always positive
 		err = entryGroup.AddService(iface, avahi.ProtoUnspec, 0, serviceName, shipZeroConfServiceType, shipZeroConfDomain, "", uint16(port), btxt) // #nosec G115
@@ -339,11 +357,13 @@ func (a *AvahiProvider) chanListener(cb api.MdnsResolveCB) {
 // as avahi returns a service per interface, we need to combine them
 func (a *AvahiProvider) processService(service avahi.Service, remove bool, cb api.MdnsResolveCB) error {
 	// check if the service is within the allowed list
+	// Get a thread-safe copy of interface indexes
+	ifaceIndexes := a.getIfaceIndexes()
 	allow := false
-	if len(a.ifaceIndexes) == 1 && a.ifaceIndexes[0] == avahi.InterfaceUnspec {
+	if len(ifaceIndexes) == 1 && ifaceIndexes[0] == avahi.InterfaceUnspec {
 		allow = true
 	} else {
-		for _, iface := range a.ifaceIndexes {
+		for _, iface := range ifaceIndexes {
 			if service.Interface == iface {
 				allow = true
 				break

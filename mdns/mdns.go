@@ -19,6 +19,10 @@ import (
 
 const shipWebsocketPath = "/ship/"
 
+// interfaceRefreshInterval is the interval at which the mDNS manager
+// checks for interface availability changes
+const interfaceRefreshInterval = 15 * time.Second
+
 type MdnsProviderSelection uint
 
 const (
@@ -169,13 +173,9 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 		return nil, []int32{avahi.InterfaceUnspec}, nil
 	}
 
-	// Initialize trackers
-	if m.missingIfaces == nil {
-		m.missingIfaces = make(map[string]struct{})
-	}
-	if m.currentIfaces == nil {
-		m.currentIfaces = make([]string, 0)
-	}
+	// Reset trackers on each call to prevent duplicates
+	m.missingIfaces = make(map[string]struct{})
+	m.currentIfaces = make([]string, 0, len(m.ifaces))
 
 	// Try to resolve each interface - DON'T FAIL if some missing
 	for _, ifaceName := range m.ifaces {
@@ -323,7 +323,7 @@ func (m *MdnsManager) startInterfaceRefresh() {
 	}
 
 	m.refreshStopChan = make(chan struct{})
-	m.refreshTicker = time.NewTicker(15 * time.Second)
+	m.refreshTicker = time.NewTicker(interfaceRefreshInterval)
 
 	// Capture channels for goroutine to avoid race conditions
 	stopChan := m.refreshStopChan
@@ -446,12 +446,16 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 
 // updateProviderInterfaces updates the provider's interface list
 func (m *MdnsManager) updateProviderInterfaces(ifaces []net.Interface, ifaceIndexes []int32) {
-	// Update provider's interface list
+	if m.mdnsProvider == nil {
+		return
+	}
+
+	// Update provider's interface list using thread-safe setters
 	switch provider := m.mdnsProvider.(type) {
 	case *AvahiProvider:
-		provider.ifaceIndexes = ifaceIndexes
+		provider.SetIfaceIndexes(ifaceIndexes)
 	case *ZeroconfProvider:
-		provider.ifaces = ifaces
+		provider.SetIfaces(ifaces)
 	}
 }
 
