@@ -29,16 +29,17 @@ func TestCertificateExpirationLogging(t *testing.T) {
 
 		// Set up expectations
 		// Use specific type matchers to avoid race conditions
-		hubReader.EXPECT().RemoteSKIConnected(mock.AnythingOfType("api.ShipConnectionInterface")).Maybe()
-		hubReader.EXPECT().RemoteSKIDisconnected(mock.AnythingOfType("string")).Maybe()
+		hubReader.EXPECT().RemoteServiceConnected(mock.AnythingOfType("api.ShipConnectionInterface")).Maybe()
+		hubReader.EXPECT().RemoteServiceDisconnected(mock.AnythingOfType("string")).Maybe()
 
-		service := api.NewServiceDetails("test-ski")
+		service := api.NewServiceDetails("testski", "", "")
 		service.SetShipID("test-ship-id")
 
 		// Create a dummy certificate for testing
 		tlsCert := tls.Certificate{}
 
-		hub := NewHub(hubReader, mdns, 4729, tlsCert, service)
+		hub, err := newTestHub(hubReader, mdns, 4729, tlsCert, service, nil)
+		assert.NoError(t, err)
 
 		// Test with valid certificate (no logging expected)
 		t.Run("valid_certificate", func(t *testing.T) {

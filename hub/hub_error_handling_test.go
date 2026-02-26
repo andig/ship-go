@@ -24,13 +24,14 @@ func TestHub_Start_ReturnsError_WhenWebSocketFails(t *testing.T) {
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
 	// Use an invalid port to guarantee immediate failure
-	hub := NewHub(hubReader, mdnsService, -1, certificate, localService)
+	hub, err := newTestHub(hubReader, mdnsService, -1, certificate, localService, nil)
+	assert.NoError(t, err)
 
 	// Test that Start() returns an error
-	err := hub.Start()
+	err = hub.Start()
 	assert.Error(t, err, "Start() should return an error when WebSocket server fails")
 	// Check that it's a websocket server error (not mDNS or other error)
 	assert.Contains(t, err.Error(), "websocket server")
@@ -49,21 +50,22 @@ func TestHub_Start_ReturnsError_WhenMdnsFails(t *testing.T) {
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
 
 	mdnsError := errors.New("mDNS startup failed")
-	mdnsService.EXPECT().Start(gomock.Any()).Return(mdnsError)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(mdnsError)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
+	assert.NoError(t, err)
 
 	// Test that Start() returns an error
-	err := hub.Start()
+	err = hub.Start()
 	assert.Error(t, err, "Start() should return an error when mDNS fails")
 	// Check that it's an mDNS error (not websocket or other error)
 	assert.Contains(t, err.Error(), "mDNS")
 	// Verify the underlying error is the one we provided
 	assert.ErrorIs(t, err, mdnsError, "Should wrap the mDNS error")
-	
+
 	// Verify WebSocket server was shut down
 	time.Sleep(200 * time.Millisecond)
 	// We can't check httpServer is nil as it's still set, but shutdown was called
@@ -76,14 +78,15 @@ func TestHub_Start_Success(t *testing.T) {
 
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
-	mdnsService.EXPECT().Start(gomock.Any()).Return(nil)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
+	assert.NoError(t, err)
 
-	err := hub.Start()
+	err = hub.Start()
 	assert.NoError(t, err, "Start() should succeed")
 	assert.True(t, hub.hasStarted, "Hub should be marked as started")
 
@@ -102,16 +105,17 @@ func TestHub_Shutdown_GracefulWithTimeout(t *testing.T) {
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
+	assert.NoError(t, err)
 
 	// Add mock connections
 	normalConn := mocks.NewShipConnectionInterface(t)
-	normalConn.EXPECT().RemoteSKI().Return("normal-ski").Maybe()
-	
+	normalConn.EXPECT().RemoteSKI().Return("normalski").Maybe()
+
 	slowConn := mocks.NewShipConnectionInterface(t)
-	slowConn.EXPECT().RemoteSKI().Return("slow-ski").Maybe()
+	slowConn.EXPECT().RemoteSKI().Return("slowski").Maybe()
 
 	// Track close calls
 	var normalClosed, slowClosed bool
@@ -132,8 +136,8 @@ func TestHub_Shutdown_GracefulWithTimeout(t *testing.T) {
 		closeMux.Unlock()
 	}).Once()
 
-	hub.connections["normal-ski"] = normalConn
-	hub.connections["slow-ski"] = slowConn
+	hub.connections["normalski"] = normalConn
+	hub.connections["slowski"] = slowConn
 
 	start := time.Now()
 	hub.Shutdown()
@@ -160,14 +164,15 @@ func TestHub_Shutdown_TimeoutStuckConnections(t *testing.T) {
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
+	assert.NoError(t, err)
 
 	// Add a stuck connection
 	stuckConn := mocks.NewShipConnectionInterface(t)
-	stuckConn.EXPECT().RemoteSKI().Return("stuck-ski").Maybe()
-	
+	stuckConn.EXPECT().RemoteSKI().Return("stuckski").Maybe()
+
 	// This connection never completes closing
 	closeStarted := make(chan bool, 1)
 	stuckConn.EXPECT().CloseConnection(false, 0, mock.Anything).Run(func(safe bool, code int, reason string) {
@@ -176,10 +181,10 @@ func TestHub_Shutdown_TimeoutStuckConnections(t *testing.T) {
 		select {}
 	}).Once()
 
-	hub.connections["stuck-ski"] = stuckConn
+	hub.connections["stuckski"] = stuckConn
 
 	start := time.Now()
-	
+
 	// Run shutdown in goroutine so we can check it completes
 	done := make(chan bool)
 	go func() {
@@ -214,18 +219,19 @@ func TestHub_HTTPServerShutdown_WithContext(t *testing.T) {
 
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
-	mdnsService.EXPECT().Start(gomock.Any()).Return(nil)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil)
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
-	
-	// Start the hub
-	err := hub.Start()
+	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)
-	
+
+	// Start the hub
+	err = hub.Start()
+	assert.NoError(t, err)
+
 	// Wait for server to be ready
 	time.Sleep(100 * time.Millisecond)
 

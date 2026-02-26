@@ -36,28 +36,28 @@ func (_m *HubInterface) EXPECT() *HubInterface_Expecter {
 	return &HubInterface_Expecter{mock: &_m.Mock}
 }
 
-// CancelPairingWithSKI provides a mock function for the type HubInterface
-func (_mock *HubInterface) CancelPairingWithSKI(ski string) {
-	_mock.Called(ski)
+// CancelPairing provides a mock function for the type HubInterface
+func (_mock *HubInterface) CancelPairing(identity api.ServiceIdentity) {
+	_mock.Called(identity)
 	return
 }
 
-// HubInterface_CancelPairingWithSKI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CancelPairingWithSKI'
-type HubInterface_CancelPairingWithSKI_Call struct {
+// HubInterface_CancelPairing_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CancelPairing'
+type HubInterface_CancelPairing_Call struct {
 	*mock.Call
 }
 
-// CancelPairingWithSKI is a helper method to define mock.On call
-//   - ski string
-func (_e *HubInterface_Expecter) CancelPairingWithSKI(ski interface{}) *HubInterface_CancelPairingWithSKI_Call {
-	return &HubInterface_CancelPairingWithSKI_Call{Call: _e.mock.On("CancelPairingWithSKI", ski)}
+// CancelPairing is a helper method to define mock.On call
+//   - identity api.ServiceIdentity
+func (_e *HubInterface_Expecter) CancelPairing(identity interface{}) *HubInterface_CancelPairing_Call {
+	return &HubInterface_CancelPairing_Call{Call: _e.mock.On("CancelPairing", identity)}
 }
 
-func (_c *HubInterface_CancelPairingWithSKI_Call) Run(run func(ski string)) *HubInterface_CancelPairingWithSKI_Call {
+func (_c *HubInterface_CancelPairing_Call) Run(run func(identity api.ServiceIdentity)) *HubInterface_CancelPairing_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 api.ServiceIdentity
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(api.ServiceIdentity)
 		}
 		run(
 			arg0,
@@ -66,39 +66,39 @@ func (_c *HubInterface_CancelPairingWithSKI_Call) Run(run func(ski string)) *Hub
 	return _c
 }
 
-func (_c *HubInterface_CancelPairingWithSKI_Call) Return() *HubInterface_CancelPairingWithSKI_Call {
+func (_c *HubInterface_CancelPairing_Call) Return() *HubInterface_CancelPairing_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *HubInterface_CancelPairingWithSKI_Call) RunAndReturn(run func(ski string)) *HubInterface_CancelPairingWithSKI_Call {
+func (_c *HubInterface_CancelPairing_Call) RunAndReturn(run func(identity api.ServiceIdentity)) *HubInterface_CancelPairing_Call {
 	_c.Run(run)
 	return _c
 }
 
-// DisconnectSKI provides a mock function for the type HubInterface
-func (_mock *HubInterface) DisconnectSKI(ski string, reason string) {
-	_mock.Called(ski, reason)
+// DisconnectService provides a mock function for the type HubInterface
+func (_mock *HubInterface) DisconnectService(identity api.ServiceIdentity, reason string) {
+	_mock.Called(identity, reason)
 	return
 }
 
-// HubInterface_DisconnectSKI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DisconnectSKI'
-type HubInterface_DisconnectSKI_Call struct {
+// HubInterface_DisconnectService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DisconnectService'
+type HubInterface_DisconnectService_Call struct {
 	*mock.Call
 }
 
-// DisconnectSKI is a helper method to define mock.On call
-//   - ski string
+// DisconnectService is a helper method to define mock.On call
+//   - identity api.ServiceIdentity
 //   - reason string
-func (_e *HubInterface_Expecter) DisconnectSKI(ski interface{}, reason interface{}) *HubInterface_DisconnectSKI_Call {
-	return &HubInterface_DisconnectSKI_Call{Call: _e.mock.On("DisconnectSKI", ski, reason)}
+func (_e *HubInterface_Expecter) DisconnectService(identity interface{}, reason interface{}) *HubInterface_DisconnectService_Call {
+	return &HubInterface_DisconnectService_Call{Call: _e.mock.On("DisconnectService", identity, reason)}
 }
 
-func (_c *HubInterface_DisconnectSKI_Call) Run(run func(ski string, reason string)) *HubInterface_DisconnectSKI_Call {
+func (_c *HubInterface_DisconnectService_Call) Run(run func(identity api.ServiceIdentity, reason string)) *HubInterface_DisconnectService_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 api.ServiceIdentity
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(api.ServiceIdentity)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -112,27 +112,27 @@ func (_c *HubInterface_DisconnectSKI_Call) Run(run func(ski string, reason strin
 	return _c
 }
 
-func (_c *HubInterface_DisconnectSKI_Call) Return() *HubInterface_DisconnectSKI_Call {
+func (_c *HubInterface_DisconnectService_Call) Return() *HubInterface_DisconnectService_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *HubInterface_DisconnectSKI_Call) RunAndReturn(run func(ski string, reason string)) *HubInterface_DisconnectSKI_Call {
+func (_c *HubInterface_DisconnectService_Call) RunAndReturn(run func(identity api.ServiceIdentity, reason string)) *HubInterface_DisconnectService_Call {
 	_c.Run(run)
 	return _c
 }
 
-// PairingDetailForSki provides a mock function for the type HubInterface
-func (_mock *HubInterface) PairingDetailForSki(ski string) *api.ConnectionStateDetail {
-	ret := _mock.Called(ski)
+// PairingDetailFor provides a mock function for the type HubInterface
+func (_mock *HubInterface) PairingDetailFor(identity api.ServiceIdentity) *api.ConnectionStateDetail {
+	ret := _mock.Called(identity)
 
 	if len(ret) == 0 {
-		panic("no return value specified for PairingDetailForSki")
+		panic("no return value specified for PairingDetailFor")
 	}
 
 	var r0 *api.ConnectionStateDetail
-	if returnFunc, ok := ret.Get(0).(func(string) *api.ConnectionStateDetail); ok {
-		r0 = returnFunc(ski)
+	if returnFunc, ok := ret.Get(0).(func(api.ServiceIdentity) *api.ConnectionStateDetail); ok {
+		r0 = returnFunc(identity)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*api.ConnectionStateDetail)
@@ -141,22 +141,22 @@ func (_mock *HubInterface) PairingDetailForSki(ski string) *api.ConnectionStateD
 	return r0
 }
 
-// HubInterface_PairingDetailForSki_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PairingDetailForSki'
-type HubInterface_PairingDetailForSki_Call struct {
+// HubInterface_PairingDetailFor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PairingDetailFor'
+type HubInterface_PairingDetailFor_Call struct {
 	*mock.Call
 }
 
-// PairingDetailForSki is a helper method to define mock.On call
-//   - ski string
-func (_e *HubInterface_Expecter) PairingDetailForSki(ski interface{}) *HubInterface_PairingDetailForSki_Call {
-	return &HubInterface_PairingDetailForSki_Call{Call: _e.mock.On("PairingDetailForSki", ski)}
+// PairingDetailFor is a helper method to define mock.On call
+//   - identity api.ServiceIdentity
+func (_e *HubInterface_Expecter) PairingDetailFor(identity interface{}) *HubInterface_PairingDetailFor_Call {
+	return &HubInterface_PairingDetailFor_Call{Call: _e.mock.On("PairingDetailFor", identity)}
 }
 
-func (_c *HubInterface_PairingDetailForSki_Call) Run(run func(ski string)) *HubInterface_PairingDetailForSki_Call {
+func (_c *HubInterface_PairingDetailFor_Call) Run(run func(identity api.ServiceIdentity)) *HubInterface_PairingDetailFor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 api.ServiceIdentity
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(api.ServiceIdentity)
 		}
 		run(
 			arg0,
@@ -165,112 +165,53 @@ func (_c *HubInterface_PairingDetailForSki_Call) Run(run func(ski string)) *HubI
 	return _c
 }
 
-func (_c *HubInterface_PairingDetailForSki_Call) Return(connectionStateDetail *api.ConnectionStateDetail) *HubInterface_PairingDetailForSki_Call {
+func (_c *HubInterface_PairingDetailFor_Call) Return(connectionStateDetail *api.ConnectionStateDetail) *HubInterface_PairingDetailFor_Call {
 	_c.Call.Return(connectionStateDetail)
 	return _c
 }
 
-func (_c *HubInterface_PairingDetailForSki_Call) RunAndReturn(run func(ski string) *api.ConnectionStateDetail) *HubInterface_PairingDetailForSki_Call {
+func (_c *HubInterface_PairingDetailFor_Call) RunAndReturn(run func(identity api.ServiceIdentity) *api.ConnectionStateDetail) *HubInterface_PairingDetailFor_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// RegisterRemoteSKI provides a mock function for the type HubInterface
-func (_mock *HubInterface) RegisterRemoteSKI(ski string, shipID string) {
-	_mock.Called(ski, shipID)
+// RegisterRemoteService provides a mock function for the type HubInterface
+func (_mock *HubInterface) RegisterRemoteService(identity api.ServiceIdentity) {
+	_mock.Called(identity)
 	return
 }
 
-// HubInterface_RegisterRemoteSKI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterRemoteSKI'
-type HubInterface_RegisterRemoteSKI_Call struct {
+// HubInterface_RegisterRemoteService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterRemoteService'
+type HubInterface_RegisterRemoteService_Call struct {
 	*mock.Call
 }
 
-// RegisterRemoteSKI is a helper method to define mock.On call
-//   - ski string
-//   - shipID string
-func (_e *HubInterface_Expecter) RegisterRemoteSKI(ski interface{}, shipID interface{}) *HubInterface_RegisterRemoteSKI_Call {
-	return &HubInterface_RegisterRemoteSKI_Call{Call: _e.mock.On("RegisterRemoteSKI", ski, shipID)}
+// RegisterRemoteService is a helper method to define mock.On call
+//   - identity api.ServiceIdentity
+func (_e *HubInterface_Expecter) RegisterRemoteService(identity interface{}) *HubInterface_RegisterRemoteService_Call {
+	return &HubInterface_RegisterRemoteService_Call{Call: _e.mock.On("RegisterRemoteService", identity)}
 }
 
-func (_c *HubInterface_RegisterRemoteSKI_Call) Run(run func(ski string, shipID string)) *HubInterface_RegisterRemoteSKI_Call {
+func (_c *HubInterface_RegisterRemoteService_Call) Run(run func(identity api.ServiceIdentity)) *HubInterface_RegisterRemoteService_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 api.ServiceIdentity
 		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
+			arg0 = args[0].(api.ServiceIdentity)
 		}
 		run(
 			arg0,
-			arg1,
 		)
 	})
 	return _c
 }
 
-func (_c *HubInterface_RegisterRemoteSKI_Call) Return() *HubInterface_RegisterRemoteSKI_Call {
+func (_c *HubInterface_RegisterRemoteService_Call) Return() *HubInterface_RegisterRemoteService_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *HubInterface_RegisterRemoteSKI_Call) RunAndReturn(run func(ski string, shipID string)) *HubInterface_RegisterRemoteSKI_Call {
+func (_c *HubInterface_RegisterRemoteService_Call) RunAndReturn(run func(identity api.ServiceIdentity)) *HubInterface_RegisterRemoteService_Call {
 	_c.Run(run)
-	return _c
-}
-
-// ServiceForSKI provides a mock function for the type HubInterface
-func (_mock *HubInterface) ServiceForSKI(ski string) *api.ServiceDetails {
-	ret := _mock.Called(ski)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ServiceForSKI")
-	}
-
-	var r0 *api.ServiceDetails
-	if returnFunc, ok := ret.Get(0).(func(string) *api.ServiceDetails); ok {
-		r0 = returnFunc(ski)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.ServiceDetails)
-		}
-	}
-	return r0
-}
-
-// HubInterface_ServiceForSKI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServiceForSKI'
-type HubInterface_ServiceForSKI_Call struct {
-	*mock.Call
-}
-
-// ServiceForSKI is a helper method to define mock.On call
-//   - ski string
-func (_e *HubInterface_Expecter) ServiceForSKI(ski interface{}) *HubInterface_ServiceForSKI_Call {
-	return &HubInterface_ServiceForSKI_Call{Call: _e.mock.On("ServiceForSKI", ski)}
-}
-
-func (_c *HubInterface_ServiceForSKI_Call) Run(run func(ski string)) *HubInterface_ServiceForSKI_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *HubInterface_ServiceForSKI_Call) Return(serviceDetails *api.ServiceDetails) *HubInterface_ServiceForSKI_Call {
-	_c.Call.Return(serviceDetails)
-	return _c
-}
-
-func (_c *HubInterface_ServiceForSKI_Call) RunAndReturn(run func(ski string) *api.ServiceDetails) *HubInterface_ServiceForSKI_Call {
-	_c.Call.Return(run)
 	return _c
 }
 
@@ -391,28 +332,28 @@ func (_c *HubInterface_Start_Call) RunAndReturn(run func() error) *HubInterface_
 	return _c
 }
 
-// UnregisterRemoteSKI provides a mock function for the type HubInterface
-func (_mock *HubInterface) UnregisterRemoteSKI(ski string) {
-	_mock.Called(ski)
+// UnregisterRemoteService provides a mock function for the type HubInterface
+func (_mock *HubInterface) UnregisterRemoteService(identity api.ServiceIdentity) {
+	_mock.Called(identity)
 	return
 }
 
-// HubInterface_UnregisterRemoteSKI_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UnregisterRemoteSKI'
-type HubInterface_UnregisterRemoteSKI_Call struct {
+// HubInterface_UnregisterRemoteService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UnregisterRemoteService'
+type HubInterface_UnregisterRemoteService_Call struct {
 	*mock.Call
 }
 
-// UnregisterRemoteSKI is a helper method to define mock.On call
-//   - ski string
-func (_e *HubInterface_Expecter) UnregisterRemoteSKI(ski interface{}) *HubInterface_UnregisterRemoteSKI_Call {
-	return &HubInterface_UnregisterRemoteSKI_Call{Call: _e.mock.On("UnregisterRemoteSKI", ski)}
+// UnregisterRemoteService is a helper method to define mock.On call
+//   - identity api.ServiceIdentity
+func (_e *HubInterface_Expecter) UnregisterRemoteService(identity interface{}) *HubInterface_UnregisterRemoteService_Call {
+	return &HubInterface_UnregisterRemoteService_Call{Call: _e.mock.On("UnregisterRemoteService", identity)}
 }
 
-func (_c *HubInterface_UnregisterRemoteSKI_Call) Run(run func(ski string)) *HubInterface_UnregisterRemoteSKI_Call {
+func (_c *HubInterface_UnregisterRemoteService_Call) Run(run func(identity api.ServiceIdentity)) *HubInterface_UnregisterRemoteService_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 api.ServiceIdentity
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(api.ServiceIdentity)
 		}
 		run(
 			arg0,
@@ -421,12 +362,12 @@ func (_c *HubInterface_UnregisterRemoteSKI_Call) Run(run func(ski string)) *HubI
 	return _c
 }
 
-func (_c *HubInterface_UnregisterRemoteSKI_Call) Return() *HubInterface_UnregisterRemoteSKI_Call {
+func (_c *HubInterface_UnregisterRemoteService_Call) Return() *HubInterface_UnregisterRemoteService_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *HubInterface_UnregisterRemoteSKI_Call) RunAndReturn(run func(ski string)) *HubInterface_UnregisterRemoteSKI_Call {
+func (_c *HubInterface_UnregisterRemoteService_Call) RunAndReturn(run func(identity api.ServiceIdentity)) *HubInterface_UnregisterRemoteService_Call {
 	_c.Run(run)
 	return _c
 }

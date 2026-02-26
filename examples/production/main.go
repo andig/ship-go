@@ -43,56 +43,56 @@ type Configuration struct {
 	Country      string `json:"country"`
 
 	// Network configuration
-	Port            int      `json:"port"`
-	MaxConnections  int      `json:"max_connections"`
+	Port              int      `json:"port"`
+	MaxConnections    int      `json:"max_connections"`
 	NetworkInterfaces []string `json:"network_interfaces,omitempty"`
 
 	// Security settings
-	AutoAcceptPairing bool `json:"auto_accept_pairing"` // Should be false in production
+	AutoAcceptPairing  bool   `json:"auto_accept_pairing"` // Should be false in production
 	TrustedDevicesFile string `json:"trusted_devices_file"`
 
 	// Operational settings
-	CertificateFile    string `json:"certificate_file"`
-	PrivateKeyFile     string `json:"private_key_file"`
-	StateFile          string `json:"state_file"`
-	LogLevel           string `json:"log_level"`
-	MetricsEnabled     bool   `json:"metrics_enabled"`
+	CertificateFile string `json:"certificate_file"`
+	PrivateKeyFile  string `json:"private_key_file"`
+	StateFile       string `json:"state_file"`
+	LogLevel        string `json:"log_level"`
+	MetricsEnabled  bool   `json:"metrics_enabled"`
 }
 
 // ProductionHubReader implements a production-grade HubReaderInterface
 type ProductionHubReader struct {
-	config           *Configuration
-	trustedDevices   map[string]TrustedDevice
-	devicesMutex     sync.RWMutex
-	connectionTimes  map[string]time.Time
-	metrics          *Metrics
-	userInterface    UserInterface
-	shutdown         chan struct{}
+	config          *Configuration
+	trustedDevices  map[string]TrustedDevice
+	devicesMutex    sync.RWMutex
+	connectionTimes map[string]time.Time
+	metrics         *Metrics
+	userInterface   UserInterface
+	shutdown        chan struct{}
 }
 
 // TrustedDevice represents a paired and trusted device
 type TrustedDevice struct {
-	SKI            string    `json:"ski"`
-	Brand          string    `json:"brand"`
-	Model          string    `json:"model"`
-	DeviceType     string    `json:"device_type"`
-	PairedAt       time.Time `json:"paired_at"`
-	LastConnection time.Time `json:"last_connection"`
-	ConnectionCount int      `json:"connection_count"`
+	SKI             string    `json:"ski"`
+	Brand           string    `json:"brand"`
+	Model           string    `json:"model"`
+	DeviceType      string    `json:"device_type"`
+	PairedAt        time.Time `json:"paired_at"`
+	LastConnection  time.Time `json:"last_connection"`
+	ConnectionCount int       `json:"connection_count"`
 }
 
 // Metrics tracks operational statistics
 type Metrics struct {
-	StartTime           time.Time         `json:"start_time"`
-	ConnectionsTotal    int64             `json:"connections_total"`
-	ConnectionsActive   int               `json:"connections_active"`
-	ConnectionsFailed   int64             `json:"connections_failed"`
-	HandshakeTimeTotal  time.Duration     `json:"handshake_time_total"`
-	HandshakeCount      int64             `json:"handshake_count"`
-	LastHealthCheck     time.Time         `json:"last_health_check"`
-	TrustedDeviceCount  int               `json:"trusted_device_count"`
-	ErrorCounts         map[string]int64  `json:"error_counts"`
-	mutex               sync.RWMutex
+	StartTime          time.Time        `json:"start_time"`
+	ConnectionsTotal   int64            `json:"connections_total"`
+	ConnectionsActive  int              `json:"connections_active"`
+	ConnectionsFailed  int64            `json:"connections_failed"`
+	HandshakeTimeTotal time.Duration    `json:"handshake_time_total"`
+	HandshakeCount     int64            `json:"handshake_count"`
+	LastHealthCheck    time.Time        `json:"last_health_check"`
+	TrustedDeviceCount int              `json:"trusted_device_count"`
+	ErrorCounts        map[string]int64 `json:"error_counts"`
+	mutex              sync.RWMutex
 }
 
 // UserInterface abstracts user interaction for pairing decisions
@@ -141,8 +141,8 @@ func NewProductionHubReader(config *Configuration) (*ProductionHubReader, error)
 		trustedDevices:  make(map[string]TrustedDevice),
 		connectionTimes: make(map[string]time.Time),
 		metrics: &Metrics{
-			StartTime:    time.Now(),
-			ErrorCounts:  make(map[string]int64),
+			StartTime:   time.Now(),
+			ErrorCounts: make(map[string]int64),
 		},
 		userInterface: &ConsoleUserInterface{autoAccept: config.AutoAcceptPairing},
 		shutdown:      make(chan struct{}),
@@ -162,7 +162,8 @@ func NewProductionHubReader(config *Configuration) (*ProductionHubReader, error)
 
 // HubReaderInterface implementation
 
-func (r *ProductionHubReader) RemoteSKIConnected(ski string) {
+func (r *ProductionHubReader) RemoteServiceConnected(identity api.ServiceIdentity) {
+	ski := identity.SKI
 	r.devicesMutex.Lock()
 	r.connectionTimes[ski] = time.Now()
 	r.devicesMutex.Unlock()
@@ -184,7 +185,8 @@ func (r *ProductionHubReader) RemoteSKIConnected(ski string) {
 	log.Printf("✅ Device connected: %s", ski)
 }
 
-func (r *ProductionHubReader) RemoteSKIDisconnected(ski string) {
+func (r *ProductionHubReader) RemoteServiceDisconnected(identity api.ServiceIdentity) {
+	ski := identity.SKI
 	r.devicesMutex.Lock()
 	startTime, existed := r.connectionTimes[ski]
 	if existed {
@@ -214,23 +216,23 @@ func (r *ProductionHubReader) RemoteSKIDisconnected(ski string) {
 	r.userInterface.NotifyConnectionStateChange(ski, api.ConnectionStateNone)
 }
 
-func (r *ProductionHubReader) SetupRemoteDevice(
-	ski string,
+func (r *ProductionHubReader) SetupRemoteService(
+	identity api.ServiceIdentity,
 	writer api.ShipConnectionDataWriterInterface,
 ) api.ShipConnectionDataReaderInterface {
-	log.Printf("🔧 Setting up SPINE layer for device: %s", ski)
-	
+	log.Printf("🔧 Setting up SPINE layer for device: %s", identity.SKI)
+
 	// In a real implementation, return your SPINE message handler here
 	// For this example, we return nil (connection works but no SPINE data exchange)
 	return nil
 }
 
-func (r *ProductionHubReader) VisibleRemoteServicesUpdated(services []api.RemoteService) {
+func (r *ProductionHubReader) VisibleRemoteMdnsServicesUpdated(services []api.RemoteMdnsService) {
 	log.Printf("📡 Discovered %d devices", len(services))
-	
+
 	for _, service := range services {
 		log.Printf("  📱 %s: %s %s", service.Ski, service.Brand, service.Model)
-		
+
 		// Check if this is a previously trusted device
 		if _, trusted := r.trustedDevices[service.Ski]; trusted {
 			log.Printf("    ✅ Previously trusted device")
@@ -240,13 +242,13 @@ func (r *ProductionHubReader) VisibleRemoteServicesUpdated(services []api.Remote
 	}
 }
 
-func (r *ProductionHubReader) ServiceShipIDUpdate(ski string, shipID string) {
-	log.Printf("🆔 Device %s has SHIP ID: %s", ski, shipID)
+func (r *ProductionHubReader) ServiceUpdated(identity api.ServiceIdentity) {
+	log.Printf("🆔 Device %s updated - SHIP ID: %s", identity.SKI, identity.ShipID)
 }
 
-func (r *ProductionHubReader) ServicePairingDetailUpdate(ski string, detail *api.ConnectionStateDetail) {
-	log.Printf("🤝 Pairing update for %s: state=%d", ski, detail.State())
-	
+func (r *ProductionHubReader) ServicePairingDetailUpdate(identity api.ServiceIdentity, detail *api.ConnectionStateDetail) {
+	log.Printf("🤝 Pairing update for %s: state=%d", identity.SKI, detail.State())
+
 	// Track handshake timing
 	r.metrics.mutex.Lock()
 	if detail.State() == api.ConnectionStateCompleted {
@@ -256,7 +258,8 @@ func (r *ProductionHubReader) ServicePairingDetailUpdate(ski string, detail *api
 	r.metrics.mutex.Unlock()
 }
 
-func (r *ProductionHubReader) AllowWaitingForTrust(ski string) bool {
+func (r *ProductionHubReader) AllowWaitingForTrust(identity api.ServiceIdentity) bool {
+	ski := identity.SKI
 	log.Printf("🔒 Trust decision requested for device: %s", ski)
 
 	// Check if device is already trusted
@@ -297,23 +300,8 @@ func (r *ProductionHubReader) AllowWaitingForTrust(ski string) bool {
 	return trusted
 }
 
-func (r *ProductionHubReader) ServiceConnectionStateChanged(ski string, state api.ConnectionState) {
-	timestamp := time.Now().Format("15:04:05")
-	log.Printf("[%s] 🔄 %s: %v", timestamp, ski, state)
-
-	switch state {
-	case api.ConnectionStateError:
-		r.metrics.mutex.Lock()
-		r.metrics.ConnectionsFailed++
-		r.metrics.mutex.Unlock()
-		r.incrementErrorCount("connection_failed")
-
-	case api.ConnectionStateRemoteDeniedTrust:
-		r.incrementErrorCount("remote_denied_trust")
-	}
-
-	r.userInterface.NotifyConnectionStateChange(ski, state)
-}
+// ServiceConnectionStateChanged method removed - this was not part of HubReaderInterface
+// Connection state updates are handled through ServicePairingDetailUpdate
 
 // Production helper methods
 
@@ -322,12 +310,12 @@ func (r *ProductionHubReader) addTrustedDevice(ski, brand, model, deviceType str
 	defer r.devicesMutex.Unlock()
 
 	device := TrustedDevice{
-		SKI:            ski,
-		Brand:          brand,
-		Model:          model,
-		DeviceType:     deviceType,
-		PairedAt:       time.Now(),
-		LastConnection: time.Time{},
+		SKI:             ski,
+		Brand:           brand,
+		Model:           model,
+		DeviceType:      deviceType,
+		PairedAt:        time.Now(),
+		LastConnection:  time.Time{},
 		ConnectionCount: 0,
 	}
 
@@ -462,7 +450,7 @@ func (r *ProductionHubReader) reportMetrics() {
 
 	log.Printf("📊 Metrics Report:")
 	log.Printf("  Uptime: %v", time.Since(startTime))
-	log.Printf("  Connections: active=%d, total=%d, failed=%d", 
+	log.Printf("  Connections: active=%d, total=%d, failed=%d",
 		connectionsActive, connectionsTotal, connectionsFailed)
 	log.Printf("  Handshakes: count=%d", handshakeCount)
 	log.Printf("  Trusted devices: %d", len(r.trustedDevices))
@@ -478,7 +466,7 @@ func (r *ProductionHubReader) reportMetrics() {
 func (r *ProductionHubReader) Shutdown() {
 	log.Printf("🛑 Shutting down production hub reader...")
 	close(r.shutdown)
-	
+
 	// Save final state
 	if err := r.saveTrustedDevices(); err != nil {
 		log.Printf("⚠️  Failed to save trusted devices on shutdown: %v", err)
@@ -490,10 +478,10 @@ func (r *ProductionHubReader) Shutdown() {
 func loadOrCreateCertificate(config *Configuration) (tls.Certificate, string, error) {
 	// Try to load existing certificate
 	if config.CertificateFile != "" && config.PrivateKeyFile != "" {
-		if _, err := os.Stat(config.CertificateFile); err == nil {
-			if _, err := os.Stat(config.PrivateKeyFile); err == nil {
-				log.Printf("📂 Loading existing certificate from %s", config.CertificateFile)
-				
+		if _, err := os.Stat(config.CertificateFile); err == nil { //nolint:gosec // G703: config paths are from trusted configuration
+			if _, err := os.Stat(config.PrivateKeyFile); err == nil { //nolint:gosec // G703: config paths are from trusted configuration
+				log.Printf("📂 Loading existing certificate from %s", config.CertificateFile) //nolint:gosec // G706: config paths are from trusted configuration
+
 				tlsCert, err := tls.LoadX509KeyPair(config.CertificateFile, config.PrivateKeyFile)
 				if err != nil {
 					return tls.Certificate{}, "", fmt.Errorf("failed to load certificate: %w", err)
@@ -513,7 +501,7 @@ func loadOrCreateCertificate(config *Configuration) (tls.Certificate, string, er
 				// Check certificate expiration
 				timeToExpiry := time.Until(x509Cert.NotAfter)
 				if timeToExpiry < 30*24*time.Hour {
-					log.Printf("⚠️  Certificate expires in %v - consider renewal", timeToExpiry)
+					log.Printf("⚠️  Certificate expires in %v - consider renewal", timeToExpiry) //nolint:gosec // G706: computed duration, not user input
 				}
 
 				return tlsCert, ski, nil
@@ -523,13 +511,13 @@ func loadOrCreateCertificate(config *Configuration) (tls.Certificate, string, er
 
 	// Create new certificate
 	log.Printf("🔐 Creating new certificate...")
-	
+
 	commonName := fmt.Sprintf("%s-%s", config.DeviceModel, config.DeviceSerial)
 	tlsCert, err := cert.CreateCertificate(
-		config.DeviceModel,    // OrganizationalUnit
-		config.Organization,   // Organization
-		config.Country,        // Country
-		commonName,           // CommonName
+		config.DeviceModel,  // OrganizationalUnit
+		config.Organization, // Organization
+		config.Country,      // Country
+		commonName,          // CommonName
 	)
 	if err != nil {
 		return tls.Certificate{}, "", fmt.Errorf("failed to create certificate: %w", err)
@@ -551,7 +539,7 @@ func loadOrCreateCertificate(config *Configuration) (tls.Certificate, string, er
 		if err := saveCertificate(tlsCert, config.CertificateFile, config.PrivateKeyFile); err != nil {
 			log.Printf("⚠️  Warning: Could not save certificate: %v", err)
 		} else {
-			log.Printf("💾 Certificate saved to %s", config.CertificateFile)
+			log.Printf("💾 Certificate saved to %s", config.CertificateFile) //nolint:gosec // G706: config paths are from trusted configuration
 		}
 	}
 
@@ -560,14 +548,14 @@ func loadOrCreateCertificate(config *Configuration) (tls.Certificate, string, er
 
 func saveCertificate(cert tls.Certificate, certFile, keyFile string) error {
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(certFile), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(certFile), 0700); err != nil { //nolint:gosec // G703: certFile is from trusted configuration
 		return fmt.Errorf("failed to create certificate directory: %w", err)
 	}
 
 	// Save certificate (this is a simplified implementation)
 	// In production, you'd use proper PEM encoding
 	certData := cert.Certificate[0]
-	if err := os.WriteFile(certFile, certData, 0600); err != nil {
+	if err := os.WriteFile(certFile, certData, 0600); err != nil { //nolint:gosec // G703: certFile is from trusted configuration
 		return fmt.Errorf("failed to save certificate: %w", err)
 	}
 
@@ -601,7 +589,7 @@ func loadConfiguration(configFile string) (*Configuration, error) {
 
 	// Load from file if provided
 	if configFile != "" {
-		data, err := os.ReadFile(configFile) // #nosec G304 - configFile comes from command line argument in example code
+		data, err := os.ReadFile(configFile) //nolint:gosec // G304,G703: configFile comes from command line argument in example code
 		if err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
@@ -610,7 +598,7 @@ func loadConfiguration(configFile string) (*Configuration, error) {
 			return nil, fmt.Errorf("failed to parse config file: %w", err)
 		}
 
-		log.Printf("📂 Loaded configuration from %s", configFile)
+		log.Printf("📂 Loaded configuration from %s", configFile) //nolint:gosec // G706: configFile is from command line argument in example code
 	}
 
 	// Validate critical settings
@@ -657,7 +645,7 @@ func main() {
 	fmt.Printf("📜 Device SKI: %s\n", ski)
 
 	// Create service details
-	serviceDetails := api.NewServiceDetails(ski)
+	serviceDetails := api.NewServiceDetails(ski, "", "")
 
 	// Create mDNS manager
 	deviceCategories := []api.DeviceCategoryType{} // Configure as needed
@@ -675,8 +663,11 @@ func main() {
 		mdns.MdnsProviderSelectionAll,
 	)
 
-	// Create hub
-	h := hub.NewHub(hubReader, mdnsManager, config.Port, certificate, serviceDetails)
+	// Create hub (no pairing configuration = no history provider needed)
+	h, err := hub.NewHub(hubReader, mdnsManager, config.Port, certificate, serviceDetails, nil, nil)
+	if err != nil {
+		log.Fatal("Failed to create hub:", err)
+	}
 
 	// Configure production settings
 	h.SetMaxConnections(config.MaxConnections)
