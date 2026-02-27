@@ -1,10 +1,17 @@
 package api
 
+import "time"
+
 // PairingConfig defines pairing behavior
 type PairingConfig struct {
 	// Core configuration (required)
 	Mode   PairingMode   // Operating mode: Off, Listener, Announcer, Both
 	Secret PairingSecret // 16-byte shared secret for HMAC validation (from QR code SPSEC field)
+
+	// AnnouncementLifetimeTimeout defines how long a continuous, uninterrupted
+	// SHIP connection must be maintained before the corresponding announcement
+	// is removed. Defaults to 15 minutes per spec if zero.
+	AnnouncementLifetimeTimeout time.Duration
 }
 
 // NewPairingConfig creates a new pairing configuration with the specified mode and secret

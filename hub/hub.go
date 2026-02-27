@@ -106,6 +106,9 @@ type Hub struct {
 
 	// AddCu replacement detection tracker for 15-minute timing enforcement
 	addCuReplacementTracker *AddCuReplacementTracker
+
+	// Announcement lifetime tracker: keeps announcements alive for specified timeout duration
+	announcementLifetimeTracker *AnnouncementLifetimeTracker
 }
 
 func NewHub(hubReader api.HubReaderInterface,
@@ -128,25 +131,31 @@ func NewHub(hubReader api.HubReaderInterface,
 	// Create autonomous context for lifecycle management
 	pairingCtx, pairingCancel := context.WithCancel(context.Background())
 
+	pairingAnnouncementLifetimeTimeout := 15*time.Minute
+	if pairingConfig != nil {
+		pairingAnnouncementLifetimeTimeout = pairingConfig.AnnouncementLifetimeTimeout
+	}
+
 	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		connectionAttemptCounter: make(map[string]int),
-		connectionAttemptRunning: make(map[string]bool),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		knownMdnsEntries:         make([]*api.MdnsEntry, 0),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		hubReader:                hubReader,
-		port:                     port,
-		certificate:              certificate,
-		localService:             localService,
-		mdns:                     mdns,
-		maxConnections:           10, // Default connection limit
-		serverStarted:            make(chan struct{}),
-		ringBufferPersistence:    ringBufferPersistence,
-		pairingCtx:               pairingCtx,
-		pairingCancel:            pairingCancel,
-		activeAnnouncements:      make(map[string]*announcementState),
-		addCuReplacementTracker:  NewAddCuReplacementTracker(),
+		connections:                 make(map[string]api.ShipConnectionInterface),
+		connectionAttemptCounter:    make(map[string]int),
+		connectionAttemptRunning:    make(map[string]bool),
+		remoteServices:              make([]*api.ServiceDetails, 0),
+		knownMdnsEntries:            make([]*api.MdnsEntry, 0),
+		connectionDelayTimers:       make(map[string]*connectionDelayTimer),
+		hubReader:                   hubReader,
+		port:                        port,
+		certificate:                 certificate,
+		localService:                localService,
+		mdns:                        mdns,
+		maxConnections:              10, // Default connection limit
+		serverStarted:               make(chan struct{}),
+		ringBufferPersistence:       ringBufferPersistence,
+		pairingCtx:                  pairingCtx,
+		pairingCancel:               pairingCancel,
+		activeAnnouncements:         make(map[string]*announcementState),
+		addCuReplacementTracker:     NewAddCuReplacementTracker(),
+		announcementLifetimeTracker: NewAnnouncementLifetimeTracker(pairingAnnouncementLifetimeTimeout),
 	}
 
 	// Validate and create pairing service if configuration provided
@@ -249,6 +258,9 @@ func (h *Hub) startPairingService() {
 
 // close all connections
 func (h *Hub) Shutdown() {
+	// Stop all announcement lifetime timers to prevent post-shutdown callbacks
+	h.announcementLifetimeTracker.StopAll()
+
 	// Cancel active announcements first
 	h.muxAnnouncements.Lock()
 	for shipID, state := range h.activeAnnouncements {

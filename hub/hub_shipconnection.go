@@ -45,6 +45,11 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 		return
 	}
 
+	// Cancel any announcement lifetime timer for this device
+	if remoteService.ShipID() != "" {
+		h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
+	}
+
 	// Start replacement tracker for AddCu devices
 	if remoteService.PairingType() == api.PairingTypeAddCu && remoteService.ShipID() != "" {
 		shipID := remoteService.ShipID()
@@ -122,7 +127,11 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 
 			if shipID := service.ShipID(); shipID != "" {
 				if h.IsAnnouncingTo(shipID) {
-					_ = h.StopAnnouncementTo(shipID)
+					// Start the lifetime timer; if the connection drops before expiry,
+					// the timer is cancelled in HandleConnectionClosed.
+					h.announcementLifetimeTracker.StartLifetimeTimer(shipID, func(expiredShipID string) {
+						_ = h.StopAnnouncementTo(expiredShipID)
+					})
 				}
 			}
 		}
