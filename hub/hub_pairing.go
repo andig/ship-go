@@ -312,6 +312,21 @@ func (h *Hub) enablePairingListener(config *api.PairingConfig) error {
 	return nil
 }
 
+// stopPairingListener stops the active pairing listener if one is running.
+// This should be called when an AddCu device reconnects.
+func (h *Hub) stopPairingListener() {
+	h.muxPairingListener.Lock()
+	defer h.muxPairingListener.Unlock()
+
+	if h.activePairingListener == nil {
+		return
+	}
+
+	if err := h.activePairingListener.StopListening(); err != nil {
+		logging.Log().Trace("pairing listener already stopped or not active", "error", err)
+	}
+}
+
 // StartAnnouncementTo starts announcing pairing to a specific target device
 func (h *Hub) StartAnnouncementTo(target *api.PairingTarget) error {
 	if target == nil {

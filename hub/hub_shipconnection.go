@@ -123,7 +123,14 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 		if pairingState == api.ConnectionStateCompleted {
 			// Stop AddCu replacement timer when connection successfully completes
 			// Stop announcement for successfully connected device
+			connectedIdentity := api.SKIToServiceIdentity(ski)
+			h.hubReader.RemoteServiceConnected(connectedIdentity)
 			h.StopAddCuReplacementTimer(service)
+
+			// Stop the pairing listener we have a AddCu device successful connection
+			if service.PairingType() == api.PairingTypeAddCu {
+				h.stopPairingListener()
+			}
 
 			if shipID := service.ShipID(); shipID != "" {
 				if h.IsAnnouncingTo(shipID) {
