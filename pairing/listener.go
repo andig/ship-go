@@ -3,6 +3,7 @@ package pairing
 import (
 	"context"
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,10 +59,7 @@ func (l *PairingListener) StartListening(ctx context.Context, secret api.Pairing
 	defer l.mux.Unlock()
 
 	// Validate secret
-	if len(secret) < 16 {
-		return api.ErrInvalidSecret
-	}
-	if len(secret) > 128 {
+	if !secret.IsValidLength() {
 		return api.ErrInvalidSecret
 	}
 
@@ -178,6 +176,22 @@ func (l *PairingListener) handlePairingRequest(txtRecord *api.ShipPairingTXT) bo
 		logging.Log().Tracef("pairing listener: announcement not for us in handlePairingRequest - wanted: %s, got: %s",
 			l.localService.ShipID(), txtRecord.ForId)
 		return true // Continue listening - not for us
+	}
+
+	// The request must target our certificate identity.
+	if !strings.EqualFold(strings.TrimSpace(txtRecord.ForPar), strings.TrimSpace(l.localService.Fingerprint())) {
+		logging.Log().Tracef("pairing listener: announcement not for our certificate in handlePairingRequest - wanted: %s, got: %s",
+			l.localService.Fingerprint(), txtRecord.ForPar)
+		l.notifyFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidTXTRecord)
+		return true
+	}
+
+	// Runtime capability check: this implementation only supports secp256r1.
+	if txtRecord.TrustCurve != api.CurveSecp256r1 {
+		logging.Log().Tracef("pairing listener: unsupported trust curve in handlePairingRequest - supported: %s, got: %s",
+			api.CurveSecp256r1, txtRecord.TrustCurve)
+		l.notifyFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrUnsupportedTrustCurve)
+		return true
 	}
 
 	// Parse nonce and digest from hex

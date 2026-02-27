@@ -1758,7 +1758,7 @@ func (suite *QRAnnouncementTestSuite) SetupTest() {
 
 	suite.pairingConfig = &api.PairingConfig{
 		Mode:   api.PairingModeAnnouncer,
-		Secret: []byte("test-secret-16bytes-long!!!"),
+		Secret: []byte("0123456789abcdef"),
 	}
 
 	localService := api.NewServiceDetails("testlocalski", "", "")
@@ -1802,6 +1802,10 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_ValidTarget() {
 	assert.Empty(suite.T(), suite.hub.GetActiveAnnouncements())
 	assert.False(suite.T(), suite.hub.IsAnnouncingTo(target.ShipID))
 
+	// Target must already be trusted before devZ can announce pairing.
+	suite.mockMdnsInterface.MdnsInterface.EXPECT().RequestMdnsEntries().Maybe()
+	suite.hub.RegisterRemoteService(api.NewServiceIdentity(target.SKI, target.Fingerprint, target.ShipID))
+
 	// Start announcement should succeed
 	err = suite.hub.StartAnnouncementTo(target)
 	assert.NoError(suite.T(), err)
@@ -1819,6 +1823,19 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_ValidTarget() {
 	// Check that announcement is removed
 	assert.Empty(suite.T(), suite.hub.GetActiveAnnouncements())
 	assert.False(suite.T(), suite.hub.IsAnnouncingTo(target.ShipID))
+}
+
+func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_TargetNotTrusted() {
+	target := &api.PairingTarget{
+		SKI:         "untrusted-ski",
+		Fingerprint: "untrusted-fingerprint",
+		ShipID:      "untrusted-ship-id",
+		Secret:      []byte("target-secret123"),
+	}
+
+	err := suite.hub.StartAnnouncementTo(target)
+	assert.Error(suite.T(), err)
+	assert.ErrorIs(suite.T(), err, api.ErrNotPaired)
 }
 
 func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
@@ -1857,6 +1874,15 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 				Secret:      []byte{},
 			},
 		},
+		{
+			name: "invalid secret length",
+			target: &api.PairingTarget{
+				SKI:         "testski",
+				Fingerprint: "test-fingerprint",
+				ShipID:      "test-ship-id",
+				Secret:      []byte("0123456789abcdefg"),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1888,6 +1914,10 @@ func (suite *QRAnnouncementTestSuite) TestMultipleAnnouncements() {
 	suite.Require().NoError(err)
 
 	// Start two announcements
+	suite.mockMdnsInterface.MdnsInterface.EXPECT().RequestMdnsEntries().Maybe()
+	suite.hub.RegisterRemoteService(api.NewServiceIdentity(target1.SKI, target1.Fingerprint, target1.ShipID))
+	suite.hub.RegisterRemoteService(api.NewServiceIdentity(target2.SKI, target2.Fingerprint, target2.ShipID))
+
 	err = suite.hub.StartAnnouncementTo(target1)
 	assert.NoError(suite.T(), err)
 
@@ -2306,7 +2336,7 @@ func (suite *EnablePairingListenerTestSuite) SetupTest() {
 	suite.localService.SetShipID("i:123_u:hub-test")
 
 	// Test secrets
-	suite.validSecret = api.PairingSecret([]byte("valid-secret-16b!")) // 16 bytes
+	suite.validSecret = api.PairingSecret([]byte("0123456789abcdef")) // 16 bytes
 	suite.invalidSecret = api.PairingSecret([]byte("short"))           // too short
 
 	// Test configurations
@@ -2456,7 +2486,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_NilConfig
 }
 
 func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_VeryLongSecret() {
-	// Test with very long secret (edge case)
+	// Test with very long secret (should be rejected by strict secret policy)
 
 	// Setup: Create very long secret
 	longSecret := make([]byte, 1024) // 1KB secret
@@ -2467,18 +2497,12 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_VeryLongS
 
 	suite.sut.pairingService = suite.mockPairingService
 
-	// Setup expectations - function should still work with long secrets
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Once()
-	// Use mock.MatchedBy to match the long secret since it's complex to match exactly
-	suite.mockListener.EXPECT().StartListening(mock.Anything, mock.MatchedBy(func(secret api.PairingSecret) bool {
-		return len(secret) == 1024
-	})).Return(nil).Once()
-
 	// Act
 	err := suite.sut.enablePairingListener(longConfig)
 
 	// Assert
-	assert.NoError(suite.T(), err, "Should handle long secrets correctly")
+	assert.Error(suite.T(), err, "Should reject long secrets")
+	assert.Contains(suite.T(), err.Error(), api.ErrInvalidSecret.Error())
 }
 
 func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ContextCancellation() {
@@ -2506,7 +2530,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_WithRealP
 	// Test with actual PairingConfig validation
 
 	// Setup: Create Hub with real pairing configuration to test the full flow
-	testSecret := api.PairingSecret([]byte("integration-test!"))
+	testSecret := api.PairingSecret([]byte("integration-test"))
 	pairingConfig := api.NewPairingConfig(api.PairingModeListener, testSecret)
 
 	// Add more mock expectations for the real pairing service startup

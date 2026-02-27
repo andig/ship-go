@@ -123,6 +123,38 @@ func (suite *MdnsPairingExtensionTestSuite) TestUnannouncePairingService() {
 	assert.False(suite.T(), suite.sut.IsPairingServiceAnnounced(), "State should reflect successful unannouncement")
 }
 
+func (suite *MdnsPairingExtensionTestSuite) TestAnnouncePairingService_DoesNotReuseInstanceNameImmediately() {
+	txtRecord := &api.ShipPairingTXT{
+		TxtVers:    "1",
+		ParType:    api.ParTypeFPSHA256,
+		ForId:      "i:983327_u:C8277H008F-3",
+		ForPar:     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		TrustId:    "i:46925_u:43652bk-2-gt1",
+		TrustPar:   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		TrustCurve: api.CurveSecp256r1,
+		Type:       api.CommandTypeAddCU,
+		TrustNonce: "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		Alg:        api.AlgorithmHMACSHA256,
+		Digest:     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
+	}
+
+	// First announce uses #1, second announce must use #2.
+	suite.mockProvider.EXPECT().AnnounceService("_shippairing._tcp", "v1.0-pairing#1", 4712, mock.AnythingOfType("[]string")).Return("provider-instance-id-1", nil).Once()
+	suite.mockProvider.EXPECT().UnannounceService("provider-instance-id-1").Return(nil).Once()
+	suite.mockProvider.EXPECT().AnnounceService("_shippairing._tcp", "v1.0-pairing#2", 4712, mock.AnythingOfType("[]string")).Return("provider-instance-id-2", nil).Once()
+
+	instanceID1, err := suite.sut.AnnouncePairingService(txtRecord)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "provider-instance-id-1", instanceID1)
+
+	err = suite.sut.UnannouncePairingService(instanceID1)
+	assert.NoError(suite.T(), err)
+
+	instanceID2, err := suite.sut.AnnouncePairingService(txtRecord)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "provider-instance-id-2", instanceID2)
+}
+
 func (suite *MdnsPairingExtensionTestSuite) TestSearchPairingServices() {
 	// Test searching for _shippairing._tcp services
 

@@ -93,7 +93,7 @@ func (p *PairingAnnouncer) EnablePairingService(config *PairingConfiguration) er
 	}
 
 	// Validate secret
-	if len(config.Secret) < 16 || len(config.Secret) > 128 {
+	if !config.Secret.IsValidLength() {
 		return api.ErrInvalidSecret
 	}
 

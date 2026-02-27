@@ -94,7 +94,6 @@ func (s *Service) Shutdown() {
 		return
 	}
 
-
 	// Shutdown listener if it's actively listening
 	if s.listener != nil {
 		// Stop the listener gracefully using the public interface
@@ -133,7 +132,6 @@ func (s *Service) GetPairingStatus() *api.PairingServiceStatus {
 		LastError:       nil,
 	}
 
-
 	// Get listener status if available
 	if s.listener != nil {
 		listenerStatus := s.listener.GetPairingServiceStatus()
@@ -170,6 +168,13 @@ func (s *Service) CreateListener(localService *api.ServiceDetails) api.PairingLi
 	if s.listener != nil {
 		// Use the public interface which provides proper mutex protection
 		_ = s.listener.StopListening()
+	}
+
+	// Ensure listener can validate forPar against the local certificate fingerprint.
+	if localService != nil && localService.Fingerprint() == "" && s.localCert != nil {
+		if fp, err := cert.FingerprintFromCertificate(s.localCert); err == nil {
+			localService.SetFingerprint(fp)
+		}
 	}
 
 	// Create and track the new listener

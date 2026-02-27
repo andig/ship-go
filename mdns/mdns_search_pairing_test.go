@@ -66,16 +66,16 @@ func (s *SearchPairingServicesSuite) Test_SearchPairingServices_Success() {
 	// Simulate a pairing service discovery via the routing mechanism
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "target-id",
-		"forPar":     "target-par",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "source-id",
-		"trustPar":   "source-par",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// This simulates what happens when provider discovers a _shippairing._tcp service
@@ -158,16 +158,16 @@ func (s *SearchPairingServicesSuite) Test_SearchPairingServices_MultipleCallback
 	// Simulate pairing service discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "test",
-		"forPar":     "testpar",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "test",
-		"trustPar":   "testpar",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processShipPairingMdnsEntry(pairingElements, "servicename", false)
@@ -212,16 +212,16 @@ func (s *SearchPairingServicesSuite) Test_IntegrationWithRouting() {
 
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "target",
-		"forPar":     "target-par",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "source",
-		"trustPar":   "source-par",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// Process a regular SHIP entry through the main entry point
@@ -266,16 +266,16 @@ func (s *SearchPairingServicesSuite) Test_UnregisterStopsCallbacks() {
 	// Simulate pairing service discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "test",
-		"forPar":     "testpar",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "test",
-		"trustPar":   "testpar",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processShipPairingMdnsEntry(pairingElements, "servicename", false)

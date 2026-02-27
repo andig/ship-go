@@ -13,6 +13,7 @@ import (
 	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/model"
 	"github.com/enbility/ship-go/pairing"
+	"github.com/enbility/ship-go/util"
 )
 
 // AutoTrustEstablishmentRequest contains the required parameters for establishing auto trust via pairing
@@ -282,6 +283,9 @@ func (h *Hub) enablePairingListener(config *api.PairingConfig) error {
 	if len(config.Secret) == 0 {
 		return fmt.Errorf("pairing secret required for autonomous listener")
 	}
+	if !config.Secret.IsValidLength() {
+		return api.ErrInvalidSecret
+	}
 
 	// Thread-safe check and create listener (double-checked locking pattern)
 	h.muxPairingListener.Lock()
@@ -343,6 +347,23 @@ func (h *Hub) StartAnnouncementTo(target *api.PairingTarget) error {
 
 	if len(target.Secret) == 0 {
 		return fmt.Errorf("target secret cannot be empty")
+	}
+	if !api.PairingSecret(target.Secret).IsValidLength() {
+		return api.ErrInvalidSecret
+	}
+
+	// devZ must already trust devA before announcing SHIP pairing.
+	trustedTarget := h.serviceForTrustedShipID(target.ShipID)
+	if trustedTarget == nil {
+		return fmt.Errorf("%w: target SHIP ID %s", api.ErrNotPaired, target.ShipID)
+	}
+
+	if target.SKI != "" && trustedTarget.SKI() != "" && util.NormalizeSKI(target.SKI) != trustedTarget.SKI() {
+		return fmt.Errorf("target identifier mismatch for SHIP ID %s: SKI does not match trusted device", target.ShipID)
+	}
+
+	if target.Fingerprint != "" && trustedTarget.Fingerprint() != "" && target.Fingerprint != trustedTarget.Fingerprint() {
+		return fmt.Errorf("target identifier mismatch for SHIP ID %s: fingerprint does not match trusted device", target.ShipID)
 	}
 
 	// check if we are already connected to the target

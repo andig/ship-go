@@ -394,6 +394,14 @@ func (s PairingSecret) Equal(other PairingSecret) bool {
 	return result == 0
 }
 
+// IsValidLength reports whether the secret length is acceptable for SHIP pairing.
+// This implementation supports:
+// - 16 bytes (raw 128-bit secret)
+// - 32 bytes (commonly used textual/encoded representation)
+func (s PairingSecret) IsValidLength() bool {
+	return len(s) == 16 || len(s) == 32
+}
+
 /* Configuration Types */
 
 // HMACParams contains parameters for HMAC calculation per SHIP spec section 7

@@ -10,7 +10,7 @@ import (
 func TestDefaultPairingConfig(t *testing.T) {
 	// TDD Test: DefaultPairingConfig should create valid configuration with sensible defaults
 
-	secret := PairingSecret("test-secret-12345678901234567890123456789012") // 32 chars = 16 bytes
+	secret := PairingSecret("0123456789ABCDEF0123456789ABCDEF") // 32-byte textual representation
 	mode := PairingModeListener
 
 	config := NewPairingConfig(mode, secret)
@@ -23,7 +23,7 @@ func TestDefaultPairingConfig(t *testing.T) {
 func TestDefaultPairingConfig_DifferentModes(t *testing.T) {
 	// TDD Test: DefaultPairingConfig should work with all pairing modes
 
-	secret := PairingSecret("test-secret-12345678901234567890123456789012")
+	secret := PairingSecret("0123456789ABCDEF0123456789ABCDEF")
 
 	modes := []PairingMode{
 		PairingModeOff,
@@ -43,7 +43,7 @@ func TestDefaultPairingConfig_DifferentModes(t *testing.T) {
 func TestPairingConfig_CustomConfiguration(t *testing.T) {
 	// TDD Test: PairingConfig should allow custom configuration
 
-	secret := PairingSecret("custom-secret-123456789012345678901234567890")
+	secret := PairingSecret("FEDCBA9876543210FEDCBA9876543210")
 
 	config := &PairingConfig{
 		Mode:   PairingModeAnnouncer,
@@ -69,7 +69,7 @@ func TestPairingConfig_Validate(t *testing.T) {
 	// TDD Test: PairingConfig.Validate should check for valid configuration
 
 	t.Run("ValidConfiguration", func(t *testing.T) {
-		secret := PairingSecret("test-secret-12345678901234567890123456789012") // 32 chars = 16 bytes
+		secret := PairingSecret("0123456789ABCDEF0123456789ABCDEF")
 		config := NewPairingConfig(PairingModeListener, secret)
 
 		err := config.Validate()
@@ -98,8 +98,16 @@ func TestPairingConfig_Validate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidSecret)
 	})
 
+	t.Run("SecretLength17Invalid", func(t *testing.T) {
+		secret := PairingSecret("0123456789abcdefg") // 17 bytes
+		config := NewPairingConfig(PairingModeListener, secret)
+
+		err := config.Validate()
+		assert.ErrorIs(t, err, ErrInvalidSecret)
+	})
+
 	t.Run("InvalidConnectionTiming", func(t *testing.T) {
-		secret := PairingSecret("test-secret-12345678901234567890123456789012")
+		secret := PairingSecret("0123456789ABCDEF0123456789ABCDEF")
 		config := &PairingConfig{
 			Mode:   PairingModeListener,
 			Secret: secret,
@@ -124,7 +132,7 @@ func TestPairingConfig_Validate(t *testing.T) {
 func TestNewPairingConfig(t *testing.T) {
 	// TDD Test: NewPairingConfig should create valid configuration
 
-	secret := PairingSecret("test-secret-12345678901234567890123456789012")
+	secret := PairingSecret("0123456789ABCDEF0123456789ABCDEF")
 	mode := PairingModeBoth
 
 	config := NewPairingConfig(mode, secret)

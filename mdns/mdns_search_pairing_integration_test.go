@@ -64,16 +64,16 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ActiveDiscove
 				// Simulate SMGW announcing pairing for heat pump
 				pairingElements := map[string]string{
 					"txtvers":    "1",
-					"parType":    "1",
+					"parType":    "fpSha256",
 					"forId":      "HeatPump-X",
 					"forPar":     "heatpump-par-123",
 					"trustId":    "SMGW-Pro",
 					"trustPar":   "smgw-par-456",
-					"trustCurve": "P-256",
-					"type":       "offer",
-					"trustNonce": "nonce123",
-					"alg":        "HS256",
-					"digest":     "digest456",
+					"trustCurve": "secp256r1",
+					"type":       "addCu",
+					"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+					"alg":        "hmacSha256",
+					"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 				}
 				cb(pairingElements, "smgw-pairing", "smgw.local", "_shippairing._tcp", []net.IP{}, 0, false)
 			}()
@@ -104,7 +104,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ActiveDiscove
 		assert.Equal(s.T(), "heatpump-par-123", service.ForPar)
 		assert.Equal(s.T(), "SMGW-Pro", service.TrustId)
 		assert.Equal(s.T(), "smgw-par-456", service.TrustPar)
-		assert.Equal(s.T(), "offer", service.Type)
+		assert.Equal(s.T(), "addCu", service.Type)
 	}
 	mu.Unlock()
 }
@@ -141,30 +141,30 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_FiltersBySKI(
 	// Simulate multiple pairing announcements
 	pairingForOther := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "OtherDevice",
 		"forPar":     "other-par-xyz", // Different PAR
 		"trustId":    "SMGW-1",
 		"trustPar":   "smgw-par-1",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	pairingForUs := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "HeatPump",
 		"forPar":     heatPumpPAR, // Our PAR
 		"trustId":    "SMGW-2",
 		"trustPar":   "smgw-par-2",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce456",
-		"alg":        "HS256",
-		"digest":     "digest456",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// Process both entries
@@ -207,16 +207,16 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_HandlesRemova
 
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "Device",
-		"forPar":     "device-par",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "SMGW",
 		"trustPar":   "smgw-par",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// Add the service
@@ -266,16 +266,16 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ReplaceCallba
 	// Trigger a discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "Device",
-		"forPar":     "device-par",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "SMGW",
 		"trustPar":   "smgw-par",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "nonce123",
-		"alg":        "HS256",
-		"digest":     "digest123",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processShipPairingMdnsEntry(pairingElements, "servicename", false)
@@ -361,7 +361,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScen
 		// Accept only offers targeting this heat pump
 		if data.ForPar == heatPumpPAR {
 			// Validate the offer (in real implementation, would check digest, etc.)
-			if data.Type == "offer" && data.TrustPar != "" {
+			if data.Type == "addCu" && data.TrustPar != "" {
 				acceptedOffer = data
 				return true
 			}
@@ -386,16 +386,16 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScen
 	// First, an offer for a different device
 	otherOffer := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "WashingMachine-Model-Z",
-		"forPar":     "WM-PAR-99999",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "SMGW-Pro-2000",
 		"trustPar":   smgwPAR,
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "random-123",
-		"alg":        "HS256",
-		"digest":     "calculated-digest",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processShipPairingMdnsEntry(otherOffer, "servicename1", false)
@@ -403,16 +403,16 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScen
 	// Then, an offer for our heat pump
 	ourOffer := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "HeatPump-Model-X",
 		"forPar":     heatPumpPAR,
 		"trustId":    "SMGW-Pro-2000",
 		"trustPar":   smgwPAR,
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "random-456",
-		"alg":        "HS256",
-		"digest":     "verified-digest",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processShipPairingMdnsEntry(ourOffer, "servicename2", false)

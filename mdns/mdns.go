@@ -674,6 +674,11 @@ func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, se
 		Digest:     digest,
 	}
 
+	if err := validatePairingTXTStrict(newEntry); err != nil {
+		logging.Log().Debug("mdns: pairing - invalid TXT record", err, serviceName)
+		return
+	}
+
 	m.setPairingMdnsEntry(serviceName, newEntry)
 
 	logging.Log().Debug("mdns: new", logString)
@@ -693,6 +698,42 @@ func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, se
 	if !continueSearching {
 		logging.Log().Debug("mdns: not searching shippairing")
 	}
+}
+
+func validatePairingTXTStrict(txt *api.ShipPairingTXT) error {
+	if err := txt.Validate(); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(txt.ForId) == "" || strings.TrimSpace(txt.TrustId) == "" {
+		return api.ErrInvalidTXTRecord
+	}
+
+	if !isUpperHexOfLength(txt.TrustNonce, 32) {
+		return api.ErrInvalidTXTRecord
+	}
+
+	if !isUpperHexOfLength(txt.Digest, 64) {
+		return api.ErrInvalidTXTRecord
+	}
+
+	return nil
+}
+
+func isUpperHexOfLength(v string, n int) bool {
+	if len(v) != n {
+		return false
+	}
+
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') {
+			continue
+		}
+		return false
+	}
+
+	return true
 }
 
 // processShipMdnsEntry processes a standard _ship._tcp mDNS entry (original processMdnsEntry logic)

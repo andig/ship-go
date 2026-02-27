@@ -69,6 +69,7 @@ func (suite *IntegrationTestSuite) SetupTest() {
 	// Setup device configurations using SHIP spec test vectors
 	suite.devAService = api.NewServiceDetails("heatpumpski", "", "")
 	suite.devAService.SetShipID("i:983327_u:C8277H008F-3") // devA from spec
+	suite.devAService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 
 	suite.devZService = api.NewServiceDetails("smgwski", "", "")
 	suite.devZService.SetShipID("i:46925_u:43652bk-2-gt1") // devZ from spec
@@ -128,7 +129,7 @@ func (suite *IntegrationTestSuite) TestCompleteAnnouncerListenerFlow() {
 	// Create target (devA from perspective of devZ)
 	target := &api.PairingTarget{
 		SKI:         "heatpumpski",
-		Fingerprint: "HEAT_PUMP_FINGERPRINT",
+		Fingerprint: "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      suite.devAService.ShipID(),
 	}
 
@@ -141,7 +142,7 @@ func (suite *IntegrationTestSuite) TestCompleteAnnouncerListenerFlow() {
 		TxtVers:    "1",
 		ParType:    api.ParTypeFPSHA256,
 		ForId:      suite.devAService.ShipID(), // For heat pump
-		ForPar:     "HEAT_PUMP_FINGERPRINT",
+		ForPar:     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		TrustId:    suite.devZService.ShipID(), // From SMGW
 		TrustPar:   "SMGW_FINGERPRINT",
 		TrustCurve: api.CurveSecp256r1,

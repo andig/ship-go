@@ -30,10 +30,7 @@ func (c *PairingConfig) Validate() error {
 
 	// Validate secret length for HMAC operations
 	if c.Mode != PairingModeOff && len(c.Secret) > 0 {
-		if len(c.Secret) < 16 {
-			return ErrInvalidSecret
-		}
-		if len(c.Secret) > 128 {
+		if !c.Secret.IsValidLength() {
 			return ErrInvalidSecret
 		}
 	}

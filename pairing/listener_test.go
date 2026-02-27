@@ -45,6 +45,7 @@ func (suite *ListenerTestSuite) SetupTest() {
 	// Setup test data
 	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
 	suite.localService.SetShipID("i:983327_u:C8277H008F-3")                  // devA from SHIP spec
+	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 	suite.testSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE") // devA secret from spec
 
 	// Create listener
@@ -92,6 +93,7 @@ func (suite *ListenerTestSuite) TestStartListening_InvalidSecret() {
 		secret api.PairingSecret
 	}{
 		{"too short", api.PairingSecret("short")},
+		{"invalid length 17", api.PairingSecret("0123456789abcdefg")},
 		{"too long", api.PairingSecret(make([]byte, 200))},
 		{"empty", api.PairingSecret("")},
 	}
@@ -326,6 +328,46 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_NotForOurDevice() {
 	// Test mDNS discovery callback
 	result := suite.sut.handleMdnsDiscovery(txtRecord)
 	assert.True(suite.T(), result, "should continue searching when announcement not for our device")
+}
+
+func (suite *ListenerTestSuite) TestValidatePairingRequest_ForParMismatch() {
+	txtRecord := suite.createValidTestTXTRecord()
+	txtRecord.ForId = suite.localService.ShipID()
+	txtRecord.ForPar = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+	ctx := context.Background()
+	suite.mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	err := suite.sut.StartListening(ctx, suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	suite.mockHub.EXPECT().
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidTXTRecord).
+		Return().
+		Once()
+
+	result := suite.sut.handlePairingRequest(txtRecord)
+	assert.True(suite.T(), result, "forPar mismatch should be rejected and listener should continue")
+	suite.mockCrypto.AssertNotCalled(suite.T(), "ValidateDigest")
+}
+
+func (suite *ListenerTestSuite) TestValidatePairingRequest_UnsupportedTrustCurve() {
+	txtRecord := suite.createValidTestTXTRecord()
+	txtRecord.ForId = suite.localService.ShipID()
+	txtRecord.TrustCurve = api.CurveBrainpoolP256r1
+
+	ctx := context.Background()
+	suite.mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	err := suite.sut.StartListening(ctx, suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	suite.mockHub.EXPECT().
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrUnsupportedTrustCurve).
+		Return().
+		Once()
+
+	result := suite.sut.handlePairingRequest(txtRecord)
+	assert.True(suite.T(), result, "unsupported trust curve should be rejected and listener should continue")
+	suite.mockCrypto.AssertNotCalled(suite.T(), "ValidateDigest")
 }
 
 func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
@@ -947,7 +989,7 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_MultipleValidRecords_S
 	txtRecord2 := suite.createValidTestTXTRecord()
 	txtRecord2.ForId = suite.localService.ShipID()
 	txtRecord2.TrustId = "device2"
-	txtRecord2.Digest = "DIFFERENT_DIGEST_FOR_SECOND_DEVICE"
+	txtRecord2.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"
 
 	entries := map[string]*api.ShipPairingTXT{
 		"service1": txtRecord1,

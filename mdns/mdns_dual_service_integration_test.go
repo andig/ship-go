@@ -106,16 +106,16 @@ func (s *DualServiceIntegrationSuite) Test_DualServiceDiscovery_SimultaneousServ
 	// 2. Simulate pairing service discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "heatpump-id",
-		"forPar":     "heatpumppar",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "smgw-id",
-		"trustPar":   "smgwpar",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "abc123",
-		"alg":        "HS256",
-		"digest":     "xyz789",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.processMdnsEntry(pairingElements, "smgw-pairing", "smgw.local",
@@ -156,10 +156,10 @@ func (s *DualServiceIntegrationSuite) Test_DualServiceDiscovery_SimultaneousServ
 		pairing := s.discoveredPairingServices[0]
 		assert.Equal(s.T(), "1", pairing.TxtVers)
 		assert.Equal(s.T(), "heatpump-id", pairing.ForId)
-		assert.Equal(s.T(), "heatpumppar", pairing.ForPar)
+		assert.Equal(s.T(), "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943", pairing.ForPar)
 		assert.Equal(s.T(), "smgw-id", pairing.TrustId)
-		assert.Equal(s.T(), "smgwpar", pairing.TrustPar)
-		assert.Equal(s.T(), "offer", pairing.Type)
+		assert.Equal(s.T(), "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4", pairing.TrustPar)
+		assert.Equal(s.T(), "addCu", pairing.Type)
 	}
 	s.mu.Unlock()
 }
@@ -234,16 +234,16 @@ func (s *DualServiceIntegrationSuite) Test_ServiceTypeRouting_Isolation() {
 	// Test 2: Pairing service should NOT create SHIP entry
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "test",
-		"forPar":     "testpar",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "test",
-		"trustPar":   "testpar",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "123456",
-		"alg":        "HS256",
-		"digest":     "abcdef123456",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 	pairingServiceName := "pairing-service"
 
@@ -340,16 +340,16 @@ func (s *DualServiceIntegrationSuite) Test_RemovalHandling_BothServiceTypes() {
 	// Test pairing service removal (though we don't store them, callback should still be invoked)
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",
+		"parType":    "fpSha256",
 		"forId":      "test",
-		"forPar":     "testpar",
+		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustId":    "test",
-		"trustPar":   "testpar",
-		"trustCurve": "P-256",
-		"type":       "offer",
-		"trustNonce": "123456",
-		"alg":        "HS256",
-		"digest":     "abcdef123456",
+		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustCurve": "secp256r1",
+		"type":       "addCu",
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// Register callback before processing
@@ -418,16 +418,16 @@ func (s *DualServiceIntegrationSuite) Test_ListenerMode_HeatPumpScenario() {
 	// SMGW announces pairing service targeting the heat pump
 	smgwPairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "1",                   // Type 1 pairing
+		"parType":    "fpSha256",                   // Type 1 pairing
 		"forId":      "HeatPump-Model-X",    // Target device ID
 		"forPar":     heatPumpSKI,           // Target heat pump's SKI
 		"trustId":    "SMGW-Pro-2000",       // SMGW's ID
 		"trustPar":   smgwSKI,               // SMGW's SKI
-		"trustCurve": "P-256",               // Elliptic curve
-		"type":       "offer",               // Pairing offer
-		"trustNonce": "random-nonce-123",    // Random nonce
-		"alg":        "HS256",               // HMAC algorithm
-		"digest":     "computed-digest-xyz", // Computed digest
+		"trustCurve": "secp256r1",               // Elliptic curve
+		"type":       "addCu",               // Pairing offer
+		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4", // Random nonce
+		"alg":        "hmacSha256",               // HMAC algorithm
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25", // Computed digest
 	}
 
 	// Simulate SMGW announcing the pairing service
@@ -441,8 +441,8 @@ func (s *DualServiceIntegrationSuite) Test_ListenerMode_HeatPumpScenario() {
 	if receivedOffer != nil {
 		assert.Equal(s.T(), heatPumpSKI, receivedOffer.ForPar, "Offer should be for this heat pump")
 		assert.Equal(s.T(), smgwSKI, receivedOffer.TrustPar, "Offer should be from SMGW")
-		assert.Equal(s.T(), "offer", receivedOffer.Type)
-		assert.Equal(s.T(), "P-256", receivedOffer.TrustCurve)
+		assert.Equal(s.T(), "addCu", receivedOffer.Type)
+		assert.Equal(s.T(), "secp256r1", receivedOffer.TrustCurve)
 
 		// Heat pump would now:
 		// 1. Validate the digest using HMAC
