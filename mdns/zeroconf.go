@@ -7,7 +7,7 @@ import (
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/logging"
-	"github.com/enbility/zeroconf/v2"
+	"github.com/enbility/zeroconf/v3"
 )
 
 type ZeroconfProvider struct {
