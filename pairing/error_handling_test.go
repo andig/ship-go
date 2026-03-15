@@ -106,7 +106,7 @@ func (suite *PairingErrorHandlingTestSuite) TestNonceGenerationFailure() {
 	err := announcer.EnablePairingService(config)
 	require.NoError(suite.T(), err)
 
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "targetski",
 		Fingerprint: "TARGET_FP",
 		ShipID:      "i:789_u:target",
@@ -147,7 +147,7 @@ func (suite *PairingErrorHandlingTestSuite) TestMdnsOperationErrors() {
 	err := announcer.EnablePairingService(config)
 	require.NoError(suite.T(), err)
 
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "targetski",
 		Fingerprint: "TARGET_FP",
 		ShipID:      "i:789_u:target",
@@ -158,7 +158,7 @@ func (suite *PairingErrorHandlingTestSuite) TestMdnsOperationErrors() {
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		suite.testSecret,
-		mock.AnythingOfType("*api.HMACParams"),
+		mock.AnythingOfType("api.HMACParams"),
 	).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(
 		mock.AnythingOfType("*api.ShipPairingTXT"),
@@ -240,7 +240,7 @@ func (suite *PairingErrorHandlingTestSuite) TestConcurrentAccess() {
 
 	// Create multiple goroutines trying to get status concurrently
 	const numGoroutines = 10
-	results := make([]*api.ListenerStatus, numGoroutines)
+	results := make([]api.ListenerStatus, numGoroutines)
 	done := make(chan bool, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
@@ -292,7 +292,7 @@ func (suite *PairingErrorHandlingTestSuite) TestErrorRecoveryAndCleanup() {
 
 	// Service should be cleanly shut down
 	status := service.GetPairingStatus()
-	assert.False(suite.T(), status.Running, "Service should be stopped after shutdown")
+	assert.False(suite.T(), status, "Service should be stopped after shutdown")
 }
 
 /* Boundary Condition Tests */
@@ -317,7 +317,7 @@ func (suite *PairingErrorHandlingTestSuite) TestBoundaryConditions() {
 	err := announcer.EnablePairingService(config)
 	require.NoError(suite.T(), err)
 
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "targetski",
 		Fingerprint: "TARGET_FP",
 		ShipID:      "i:789_u:target",
@@ -328,7 +328,7 @@ func (suite *PairingErrorHandlingTestSuite) TestBoundaryConditions() {
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		suite.testSecret,
-		mock.AnythingOfType("*api.HMACParams"),
+		mock.AnythingOfType("api.HMACParams"),
 	).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(
 		mock.AnythingOfType("*api.ShipPairingTXT"),

@@ -79,7 +79,7 @@ func (suite *AutonomousListenerTestSuite) TestAutonomousAcceptance_ValidHMAC() {
 	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
 
 	// Mock successful HMAC validation
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
 
 	// Mock replay protection (not seen before)
 	suite.mockHistory.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, txtRecord.Digest).Return(false).Once()
@@ -131,7 +131,7 @@ func (suite *AutonomousListenerTestSuite) TestAutonomousAcceptance_IndependentOf
 	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
 
 	// Mock successful validation
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
 	suite.mockHistory.EXPECT().HasSeenDigest(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(false).Once()
 	suite.mockHistory.EXPECT().RecordPairing(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()
 
@@ -171,7 +171,7 @@ func (suite *AutonomousListenerTestSuite) TestNoUserConfirmationRequired() {
 	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
 
 	// Mock successful validation chain
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
 	suite.mockHistory.EXPECT().HasSeenDigest(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(false).Once()
 	suite.mockHistory.EXPECT().RecordPairing(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()
 	suite.mockHub.EXPECT().OnPairingSuccess(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()
@@ -199,9 +199,9 @@ func (suite *AutonomousListenerTestSuite) TestSpecificationCompliance_Section4_2
 	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
 
 	// Mock the evaluation steps per SHIP spec section 9
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once() // Step 3
-	suite.mockHistory.EXPECT().HasSeenDigest(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(false).Once()                                                   // Step 2
-	suite.mockHistory.EXPECT().RecordPairing(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()                                                        // Step 4
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once() // Step 3
+	suite.mockHistory.EXPECT().HasSeenDigest(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(false).Once()                                                  // Step 2
+	suite.mockHistory.EXPECT().RecordPairing(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()                                                       // Step 4
 
 	// After successful evaluation, SHALL trust (mandatory)
 	suite.mockHub.EXPECT().OnPairingSuccess(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Once()

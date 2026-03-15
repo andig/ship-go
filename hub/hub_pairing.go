@@ -332,11 +332,7 @@ func (h *Hub) stopPairingListener() {
 }
 
 // StartAnnouncementTo starts announcing pairing to a specific target device
-func (h *Hub) StartAnnouncementTo(target *api.PairingTarget) error {
-	if target == nil {
-		return fmt.Errorf("target cannot be nil")
-	}
-
+func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 	if target.ShipID == "" {
 		return fmt.Errorf("target SHIP ID cannot be empty")
 	}
@@ -401,7 +397,7 @@ func (h *Hub) StartAnnouncementTo(target *api.PairingTarget) error {
 	_, cancel := context.WithCancel(h.pairingCtx)
 
 	// Create announcement state
-	state := &announcementState{
+	state := announcementState{
 		target:     target,
 		announcer:  announcer,
 		startTime:  time.Now(),
@@ -608,16 +604,16 @@ func (h *Hub) GetLocalCertificateFingerprint() (string, error) {
 }
 
 // GeneratePairingQR generates a QR code string for pairing
-// When secret is nil/empty: generates standard SHIP QR format
-// When secret is provided: generates SHIP Pairing Service QR format
-func (h *Hub) GeneratePairingQR(secret api.PairingSecret) (string, error) {
-	if len(secret) == 0 {
+// When there is no pairing service, or secret key is not defined: generates standard SHIP QR format
+// When there is pairing service in listener mode with secret key provided: generates SHIP Pairing Service QR format
+func (h *Hub) GeneratePairingQR() (string, error) {
+	if h.pairingConfig == nil || len(h.pairingConfig.Secret) == 0 {
 		// Generate standard SHIP QR format: SHIP;SKI:<ski>;ID:<identifier>;<optionals>ENDSHIP;
 		return h.generateStandardShipQR()
 	}
 
 	// Generate SHIP Pairing Service QR format
-	return h.generatePairingServiceQR(secret)
+	return h.generatePairingServiceQR(h.pairingConfig.Secret)
 }
 
 // generateStandardShipQR generates the standard SHIP QR format

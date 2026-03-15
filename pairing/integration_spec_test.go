@@ -251,7 +251,7 @@ func (suite *SpecificationIntegrationTestSuite) TestSpecificationCompleteFlow() 
 	require.NoError(suite.T(), err)
 
 	// Create pairing target from specification data
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         suite.devAService.SKI(),
 		Fingerprint: suite.devAService.Fingerprint(),
 		ShipID:      suite.devAService.ShipID(),
@@ -332,7 +332,7 @@ func (suite *SpecificationIntegrationTestSuite) TestSpecificationCompleteFlow() 
 	// Verify cleanup
 	finalStatus := announcer.GetAnnouncementStatus()
 	assert.False(suite.T(), finalStatus.Active, "announcement should be stopped")
-	assert.Nil(suite.T(), finalStatus.Target, "target should be cleared")
+	assert.True(suite.T(), finalStatus.Target.IsEmpty(), "target should be cleared")
 }
 
 func (suite *SpecificationIntegrationTestSuite) testDevAValidation(txtRecord *api.ShipPairingTXT) {
@@ -344,7 +344,7 @@ func (suite *SpecificationIntegrationTestSuite) testDevAValidation(txtRecord *ap
 	require.NoError(suite.T(), err)
 
 	// Create HMAC parameters
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: txtRecord.Alg,
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -465,7 +465,7 @@ func (suite *SpecificationIntegrationTestSuite) TestSpecificationDigestCalculati
 	}
 
 	// Create HMAC parameters
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: "hmacSha256",
 		Nonce:     nonceBytes,
 		TxtRecord: txtRecord,

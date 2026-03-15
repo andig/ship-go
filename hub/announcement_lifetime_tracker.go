@@ -37,7 +37,7 @@ type AnnouncementLifetimeTracker struct {
 	timeout time.Duration
 
 	// timers maps ShipID → active timer for that device
-	timers map[string]*lifetimeTimer
+	timers map[string]lifetimeTimer
 
 	// mutex protects concurrent access to tracker state
 	mutex sync.RWMutex
@@ -58,7 +58,7 @@ func NewAnnouncementLifetimeTracker(timeout time.Duration) *AnnouncementLifetime
 	}
 	return &AnnouncementLifetimeTracker{
 		timeout: timeout,
-		timers:  make(map[string]*lifetimeTimer),
+		timers:  make(map[string]lifetimeTimer),
 	}
 }
 
@@ -81,8 +81,8 @@ func (t *AnnouncementLifetimeTracker) StartLifetimeTimer(shipID string, onExpiry
 	defer t.mutex.Unlock()
 
 	// Stop any existing timer for this device
-	if existing, ok := t.timers[shipID]; ok {
-		existing.timer.Stop()
+	if _, ok := t.timers[shipID]; ok {
+		t.removeLifetimeTimer(shipID)
 		logging.Log().Debug("announcement lifetime timer reset", "shipID", shipID)
 	}
 
@@ -93,7 +93,7 @@ func (t *AnnouncementLifetimeTracker) StartLifetimeTimer(shipID string, onExpiry
 
 		// Clear state when timer expires
 		t.mutex.Lock()
-		delete(t.timers, expiredShipID)
+		t.removeLifetimeTimer(expiredShipID)
 		t.mutex.Unlock()
 
 		logging.Log().Debug("announcement lifetime expired, stopping announcement", "shipID", expiredShipID)
@@ -104,7 +104,7 @@ func (t *AnnouncementLifetimeTracker) StartLifetimeTimer(shipID string, onExpiry
 		}
 	})
 
-	t.timers[shipID] = &lifetimeTimer{
+	t.timers[shipID] = lifetimeTimer{
 		shipID: shipID,
 		timer:  timer,
 	}
@@ -125,15 +125,7 @@ func (t *AnnouncementLifetimeTracker) StartLifetimeTimer(shipID string, onExpiry
 func (t *AnnouncementLifetimeTracker) CancelLifetimeTimer(shipID string) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-
-	existing, ok := t.timers[shipID]
-	if !ok {
-		return
-	}
-
-	existing.timer.Stop()
-	delete(t.timers, shipID)
-
+	t.removeLifetimeTimer(shipID)
 	logging.Log().Debug("announcement lifetime timer cancelled (connection interrupted)",
 		"shipID", shipID)
 }
@@ -166,11 +158,25 @@ func (t *AnnouncementLifetimeTracker) IsTimerActive(shipID string) bool {
 func (t *AnnouncementLifetimeTracker) StopAll() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-
-	for shipID, lt := range t.timers {
-		lt.timer.Stop()
+	// First iterate and remove all timers to ensure cancellation and freeing the timers
+	for shipID := range t.timers {
+		t.removeLifetimeTimer(shipID)
 		logging.Log().Debug("announcement lifetime timer stopped during shutdown", "shipID", shipID)
 	}
 
-	t.timers = make(map[string]*lifetimeTimer)
+	// Then free the map
+	t.timers = make(map[string]lifetimeTimer)
+}
+
+func (t *AnnouncementLifetimeTracker) removeLifetimeTimer(shipID string) {
+	existing, ok := t.timers[shipID]
+	if !ok {
+		return
+	}
+
+	if existing.timer != nil {
+		existing.timer.Stop()
+		existing.timer = nil
+	}
+	delete(t.timers, shipID)
 }

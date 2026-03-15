@@ -30,7 +30,7 @@ var connectionInitiationDelayTimeRanges = []connectionInitiationDelayTimeRange{
 
 // announcementState tracks the state of an active announcement to a target device
 type announcementState struct {
-	target     *api.PairingTarget
+	target     api.PairingTarget
 	announcer  api.PairingAnnouncerInterface
 	startTime  time.Time
 	cancelFunc context.CancelFunc
@@ -101,7 +101,7 @@ type Hub struct {
 	pairingCancel context.CancelFunc
 
 	// QR-based announcement tracking
-	activeAnnouncements map[string]*announcementState
+	activeAnnouncements map[string]announcementState
 	muxAnnouncements    sync.RWMutex
 
 	// AddCu replacement detection tracker for 15-minute timing enforcement
@@ -131,7 +131,7 @@ func NewHub(hubReader api.HubReaderInterface,
 	// Create autonomous context for lifecycle management
 	pairingCtx, pairingCancel := context.WithCancel(context.Background())
 
-	pairingAnnouncementLifetimeTimeout := 15*time.Minute
+	pairingAnnouncementLifetimeTimeout := 15 * time.Minute
 	if pairingConfig != nil {
 		pairingAnnouncementLifetimeTimeout = pairingConfig.AnnouncementLifetimeTimeout
 	}
@@ -153,7 +153,7 @@ func NewHub(hubReader api.HubReaderInterface,
 		ringBufferPersistence:       ringBufferPersistence,
 		pairingCtx:                  pairingCtx,
 		pairingCancel:               pairingCancel,
-		activeAnnouncements:         make(map[string]*announcementState),
+		activeAnnouncements:         make(map[string]announcementState),
 		addCuReplacementTracker:     NewAddCuReplacementTracker(),
 		announcementLifetimeTracker: NewAnnouncementLifetimeTracker(pairingAnnouncementLifetimeTimeout),
 	}
@@ -173,6 +173,8 @@ func NewHub(hubReader api.HubReaderInterface,
 var _ api.HubInterface = (*Hub)(nil)
 
 // Start the ConnectionsHub with all its services
+// 
+// Returns error with description of the error that cannot be recovered from
 func (h *Hub) Start() error {
 	h.muxStarted.Lock()
 	defer h.muxStarted.Unlock()
@@ -273,7 +275,7 @@ func (h *Hub) Shutdown() {
 		}
 	}
 	// Clear the map
-	h.activeAnnouncements = make(map[string]*announcementState)
+	h.activeAnnouncements = make(map[string]announcementState)
 	h.muxAnnouncements.Unlock()
 
 	// Cancel pairing operations

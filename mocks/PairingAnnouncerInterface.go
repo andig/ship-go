@@ -37,7 +37,7 @@ func (_m *PairingAnnouncerInterface) EXPECT() *PairingAnnouncerInterface_Expecte
 }
 
 // Announce provides a mock function for the type PairingAnnouncerInterface
-func (_mock *PairingAnnouncerInterface) Announce(target *api.PairingTarget) error {
+func (_mock *PairingAnnouncerInterface) Announce(target api.PairingTarget) error {
 	ret := _mock.Called(target)
 
 	if len(ret) == 0 {
@@ -45,7 +45,7 @@ func (_mock *PairingAnnouncerInterface) Announce(target *api.PairingTarget) erro
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(*api.PairingTarget) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(api.PairingTarget) error); ok {
 		r0 = returnFunc(target)
 	} else {
 		r0 = ret.Error(0)
@@ -59,16 +59,16 @@ type PairingAnnouncerInterface_Announce_Call struct {
 }
 
 // Announce is a helper method to define mock.On call
-//   - target *api.PairingTarget
+//   - target api.PairingTarget
 func (_e *PairingAnnouncerInterface_Expecter) Announce(target interface{}) *PairingAnnouncerInterface_Announce_Call {
 	return &PairingAnnouncerInterface_Announce_Call{Call: _e.mock.On("Announce", target)}
 }
 
-func (_c *PairingAnnouncerInterface_Announce_Call) Run(run func(target *api.PairingTarget)) *PairingAnnouncerInterface_Announce_Call {
+func (_c *PairingAnnouncerInterface_Announce_Call) Run(run func(target api.PairingTarget)) *PairingAnnouncerInterface_Announce_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *api.PairingTarget
+		var arg0 api.PairingTarget
 		if args[0] != nil {
-			arg0 = args[0].(*api.PairingTarget)
+			arg0 = args[0].(api.PairingTarget)
 		}
 		run(
 			arg0,
@@ -82,26 +82,24 @@ func (_c *PairingAnnouncerInterface_Announce_Call) Return(err error) *PairingAnn
 	return _c
 }
 
-func (_c *PairingAnnouncerInterface_Announce_Call) RunAndReturn(run func(target *api.PairingTarget) error) *PairingAnnouncerInterface_Announce_Call {
+func (_c *PairingAnnouncerInterface_Announce_Call) RunAndReturn(run func(target api.PairingTarget) error) *PairingAnnouncerInterface_Announce_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAnnouncementStatus provides a mock function for the type PairingAnnouncerInterface
-func (_mock *PairingAnnouncerInterface) GetAnnouncementStatus() *api.AnnouncementStatus {
+func (_mock *PairingAnnouncerInterface) GetAnnouncementStatus() api.AnnouncementStatus {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAnnouncementStatus")
 	}
 
-	var r0 *api.AnnouncementStatus
-	if returnFunc, ok := ret.Get(0).(func() *api.AnnouncementStatus); ok {
+	var r0 api.AnnouncementStatus
+	if returnFunc, ok := ret.Get(0).(func() api.AnnouncementStatus); ok {
 		r0 = returnFunc()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.AnnouncementStatus)
-		}
+		r0 = ret.Get(0).(api.AnnouncementStatus)
 	}
 	return r0
 }
@@ -123,12 +121,12 @@ func (_c *PairingAnnouncerInterface_GetAnnouncementStatus_Call) Run(run func()) 
 	return _c
 }
 
-func (_c *PairingAnnouncerInterface_GetAnnouncementStatus_Call) Return(announcementStatus *api.AnnouncementStatus) *PairingAnnouncerInterface_GetAnnouncementStatus_Call {
+func (_c *PairingAnnouncerInterface_GetAnnouncementStatus_Call) Return(announcementStatus api.AnnouncementStatus) *PairingAnnouncerInterface_GetAnnouncementStatus_Call {
 	_c.Call.Return(announcementStatus)
 	return _c
 }
 
-func (_c *PairingAnnouncerInterface_GetAnnouncementStatus_Call) RunAndReturn(run func() *api.AnnouncementStatus) *PairingAnnouncerInterface_GetAnnouncementStatus_Call {
+func (_c *PairingAnnouncerInterface_GetAnnouncementStatus_Call) RunAndReturn(run func() api.AnnouncementStatus) *PairingAnnouncerInterface_GetAnnouncementStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }

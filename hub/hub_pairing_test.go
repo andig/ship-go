@@ -1437,15 +1437,13 @@ func (suite *HubPairingCompositionTestSuite) TestApplicationUsageExample() {
 	// Step 3: Application uses pairing service
 	// Mock pairing service operations
 	mockPairingService.EXPECT().Start().Return(nil).Once()
-	mockPairingService.EXPECT().GetPairingStatus().Return(&api.PairingServiceStatus{
-		Running: true,
-	}).Once()
+	mockPairingService.EXPECT().GetPairingStatus().Return(true).Once()
 
 	err := pairingService.Start()
 	assert.NoError(suite.T(), err)
 
 	status := pairingService.GetPairingStatus()
-	assert.True(suite.T(), status.Running)
+	assert.True(suite.T(), status)
 }
 
 /* Backward Compatibility Tests */
@@ -1568,10 +1566,10 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_ValidSecret() {
 	// Test successful QR generation with valid 16-byte secret
 
 	// Arrange - Create valid 16-byte secret
-	validSecret := api.PairingSecret([]byte("0123456789abcdef")) // exactly 16 bytes
+	suite.sut.pairingConfig.Secret = api.PairingSecret([]byte("0123456789abcdef")) // exactly 16 bytes
 
 	// Act
-	qrString, err := suite.sut.GeneratePairingQR(validSecret)
+	qrString, err := suite.sut.GeneratePairingQR()
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -1626,10 +1624,10 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_SecretTooShort() {
 	// Test error handling for secret shorter than 16 bytes
 
 	// Arrange - Create secret that's too short (15 bytes)
-	shortSecret := api.PairingSecret([]byte("0123456789abcde")) // 15 bytes
+	suite.sut.pairingConfig.Secret = api.PairingSecret([]byte("0123456789abcde")) // 15 bytes
 
 	// Act
-	qrString, err := suite.sut.GeneratePairingQR(shortSecret)
+	qrString, err := suite.sut.GeneratePairingQR()
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -1641,10 +1639,10 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_SecretTooLong() {
 	// Test error handling for secret longer than 16 bytes
 
 	// Arrange - Create secret that's too long (17 bytes)
-	longSecret := api.PairingSecret([]byte("0123456789abcdefg")) // 17 bytes
+	suite.sut.pairingConfig.Secret = api.PairingSecret([]byte("0123456789abcdefg")) // 17 bytes
 
 	// Act
-	qrString, err := suite.sut.GeneratePairingQR(longSecret)
+	qrString, err := suite.sut.GeneratePairingQR()
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -1657,10 +1655,10 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_EmptySecret() {
 	// Test standard SHIP QR format generation for empty secret
 
 	// Arrange - Create empty secret
-	emptySecret := api.PairingSecret([]byte{})
+	suite.sut.pairingConfig.Secret = api.PairingSecret{}
 
 	// Act
-	qrString, err := suite.sut.GeneratePairingQR(emptySecret)
+	qrString, err := suite.sut.GeneratePairingQR()
 
 	// Assert - Should generate standard SHIP QR format, not error
 	assert.NoError(suite.T(), err)
@@ -1669,16 +1667,17 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_EmptySecret() {
 	assert.True(suite.T(), strings.HasSuffix(qrString, "ENDSHIP;"), "Should end with ENDSHIP;")
 	assert.Contains(suite.T(), qrString, "SKI:hubtestski", "Should contain the SKI")
 	assert.Contains(suite.T(), qrString, "ID:i:123_u:hub-test", "Should contain the ship ID")
+	assert.NotContains(suite.T(), qrString, "SPSEC")
 }
 
 func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_NilSecret() {
 	// Test standard SHIP QR format generation for nil secret
 
 	// Arrange - Use nil secret
-	var nilSecret api.PairingSecret
+	suite.sut.pairingConfig.Secret = nil
 
 	// Act
-	qrString, err := suite.sut.GeneratePairingQR(nilSecret)
+	qrString, err := suite.sut.GeneratePairingQR()
 
 	// Assert - Should generate standard SHIP QR format, not error
 	assert.NoError(suite.T(), err)
@@ -1687,6 +1686,7 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_NilSecret() {
 	assert.True(suite.T(), strings.HasSuffix(qrString, "ENDSHIP;"), "Should end with ENDSHIP;")
 	assert.Contains(suite.T(), qrString, "SKI:hubtestski", "Should contain the SKI")
 	assert.Contains(suite.T(), qrString, "ID:i:123_u:hub-test", "Should contain the ship ID")
+	assert.NotContains(suite.T(), qrString, "SPSEC")
 }
 
 func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_InvalidCertificate() {
@@ -1717,7 +1717,7 @@ func (suite *HubPairingQRTestSuite) TestGeneratePairingQR_InvalidCertificate() {
 	validSecret := api.PairingSecret([]byte("0123456789abcdef"))
 
 	// Act
-	qrString, err := hubWithInvalidCert.GeneratePairingQR(validSecret)
+	qrString, err := hubWithInvalidCert.generatePairingServiceQR(validSecret)
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -1787,7 +1787,7 @@ func (suite *QRAnnouncementTestSuite) TearDownTest() {
 }
 
 func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_ValidTarget() {
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "testtargetski",
 		Fingerprint: "test-fingerprint",
 		ShipID:      "test-target-ship-id",
@@ -1826,7 +1826,7 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_ValidTarget() {
 }
 
 func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_TargetNotTrusted() {
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "untrusted-ski",
 		Fingerprint: "untrusted-fingerprint",
 		ShipID:      "untrusted-ship-id",
@@ -1841,15 +1841,11 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_TargetNotTrusted()
 func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 	tests := []struct {
 		name   string
-		target *api.PairingTarget
+		target api.PairingTarget
 	}{
 		{
-			name:   "nil target",
-			target: nil,
-		},
-		{
 			name: "empty SHIP ID",
-			target: &api.PairingTarget{
+			target: api.PairingTarget{
 				SKI:         "testski",
 				Fingerprint: "test-fingerprint",
 				ShipID:      "",
@@ -1858,7 +1854,7 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 		},
 		{
 			name: "empty SKI",
-			target: &api.PairingTarget{
+			target: api.PairingTarget{
 				SKI:         "",
 				Fingerprint: "test-fingerprint",
 				ShipID:      "test-ship-id",
@@ -1867,7 +1863,7 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 		},
 		{
 			name: "empty secret",
-			target: &api.PairingTarget{
+			target: api.PairingTarget{
 				SKI:         "testski",
 				Fingerprint: "test-fingerprint",
 				ShipID:      "test-ship-id",
@@ -1876,7 +1872,7 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 		},
 		{
 			name: "invalid secret length",
-			target: &api.PairingTarget{
+			target: api.PairingTarget{
 				SKI:         "testski",
 				Fingerprint: "test-fingerprint",
 				ShipID:      "test-ship-id",
@@ -1895,14 +1891,14 @@ func (suite *QRAnnouncementTestSuite) TestStartAnnouncementTo_InvalidTarget() {
 }
 
 func (suite *QRAnnouncementTestSuite) TestMultipleAnnouncements() {
-	target1 := &api.PairingTarget{
+	target1 := api.PairingTarget{
 		SKI:         "testski1",
 		Fingerprint: "test-fingerprint-1",
 		ShipID:      "test-ship-id-1",
 		Secret:      []byte("1234567890123456"), // 16-byte secret
 	}
 
-	target2 := &api.PairingTarget{
+	target2 := api.PairingTarget{
 		SKI:         "testski2",
 		Fingerprint: "test-fingerprint-2",
 		ShipID:      "test-ship-id-2",
@@ -1957,7 +1953,7 @@ func (suite *QRAnnouncementTestSuite) TestAnnouncementConcurrencyThreadSafety() 
 		go func(index int) {
 			defer wg.Done()
 
-			target := &api.PairingTarget{
+			target := api.PairingTarget{
 				SKI:         "testski" + string(rune(index)),
 				Fingerprint: "test-fingerprint",
 				ShipID:      "test-ship-id-" + string(rune(index)),
@@ -2337,7 +2333,7 @@ func (suite *EnablePairingListenerTestSuite) SetupTest() {
 
 	// Test secrets
 	suite.validSecret = api.PairingSecret([]byte("0123456789abcdef")) // 16 bytes
-	suite.invalidSecret = api.PairingSecret([]byte("short"))           // too short
+	suite.invalidSecret = api.PairingSecret([]byte("short"))          // too short
 
 	// Test configurations
 	suite.validConfig = api.NewPairingConfig(api.PairingModeListener, suite.validSecret)

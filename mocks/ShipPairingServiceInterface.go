@@ -143,20 +143,18 @@ func (_c *ShipPairingServiceInterface_CreateListener_Call) RunAndReturn(run func
 }
 
 // GetPairingStatus provides a mock function for the type ShipPairingServiceInterface
-func (_mock *ShipPairingServiceInterface) GetPairingStatus() *api.PairingServiceStatus {
+func (_mock *ShipPairingServiceInterface) GetPairingStatus() bool {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetPairingStatus")
 	}
 
-	var r0 *api.PairingServiceStatus
-	if returnFunc, ok := ret.Get(0).(func() *api.PairingServiceStatus); ok {
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func() bool); ok {
 		r0 = returnFunc()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.PairingServiceStatus)
-		}
+		r0 = ret.Get(0).(bool)
 	}
 	return r0
 }
@@ -178,74 +176,12 @@ func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) Run(run func()) *Sh
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) Return(pairingServiceStatus *api.PairingServiceStatus) *ShipPairingServiceInterface_GetPairingStatus_Call {
-	_c.Call.Return(pairingServiceStatus)
+func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) Return(b bool) *ShipPairingServiceInterface_GetPairingStatus_Call {
+	_c.Call.Return(b)
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) RunAndReturn(run func() *api.PairingServiceStatus) *ShipPairingServiceInterface_GetPairingStatus_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// PairingStateFor provides a mock function for the type ShipPairingServiceInterface
-func (_mock *ShipPairingServiceInterface) PairingStateFor(service *api.ServiceDetails) (*api.PairingStateDetail, error) {
-	ret := _mock.Called(service)
-
-	if len(ret) == 0 {
-		panic("no return value specified for PairingStateFor")
-	}
-
-	var r0 *api.PairingStateDetail
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(*api.ServiceDetails) (*api.PairingStateDetail, error)); ok {
-		return returnFunc(service)
-	}
-	if returnFunc, ok := ret.Get(0).(func(*api.ServiceDetails) *api.PairingStateDetail); ok {
-		r0 = returnFunc(service)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.PairingStateDetail)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(*api.ServiceDetails) error); ok {
-		r1 = returnFunc(service)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// ShipPairingServiceInterface_PairingStateFor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PairingStateFor'
-type ShipPairingServiceInterface_PairingStateFor_Call struct {
-	*mock.Call
-}
-
-// PairingStateFor is a helper method to define mock.On call
-//   - service *api.ServiceDetails
-func (_e *ShipPairingServiceInterface_Expecter) PairingStateFor(service interface{}) *ShipPairingServiceInterface_PairingStateFor_Call {
-	return &ShipPairingServiceInterface_PairingStateFor_Call{Call: _e.mock.On("PairingStateFor", service)}
-}
-
-func (_c *ShipPairingServiceInterface_PairingStateFor_Call) Run(run func(service *api.ServiceDetails)) *ShipPairingServiceInterface_PairingStateFor_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *api.ServiceDetails
-		if args[0] != nil {
-			arg0 = args[0].(*api.ServiceDetails)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *ShipPairingServiceInterface_PairingStateFor_Call) Return(pairingStateDetail *api.PairingStateDetail, err error) *ShipPairingServiceInterface_PairingStateFor_Call {
-	_c.Call.Return(pairingStateDetail, err)
-	return _c
-}
-
-func (_c *ShipPairingServiceInterface_PairingStateFor_Call) RunAndReturn(run func(service *api.ServiceDetails) (*api.PairingStateDetail, error)) *ShipPairingServiceInterface_PairingStateFor_Call {
+func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) RunAndReturn(run func() bool) *ShipPairingServiceInterface_GetPairingStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }

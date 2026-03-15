@@ -73,7 +73,7 @@ func (suite *HubIntegrationTestSuite) TearDownTest() {
 	if suite.sut != nil {
 		// Only cleanup if actually announcing to prevent unnecessary mock calls
 		status := suite.sut.GetPairingServiceStatus()
-		if status != nil && status.AnnouncerActive {
+		if status.AnnouncerActive {
 			// Allow RemovePairing call for active announcements
 			suite.mockPairingMdns.EXPECT().UnannouncePairingService(mock.AnythingOfType("string")).Return(nil).Once()
 			suite.sut.OnConnectionEstablished("test-cleanup")
@@ -114,7 +114,7 @@ func (suite *HubIntegrationTestSuite) TestAnnounceToDevice_CompleteFlow() {
 	assert.NoError(suite.T(), err)
 
 	// Target device info
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "targetdeviceski",
 		Fingerprint: "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      "i:983327_u:C8277H008F-3",
@@ -132,7 +132,7 @@ func (suite *HubIntegrationTestSuite) TestAnnounceToDevice_CompleteFlow() {
 	// Mock HMAC calculation
 	testDigest := []byte{0xAA, 0xBB, 0xCC, 0xDD}
 	suite.mockCrypto.EXPECT().
-		CalculateDigest(config.Secret, mock.AnythingOfType("*api.HMACParams")).
+		CalculateDigest(config.Secret, mock.AnythingOfType("api.HMACParams")).
 		Return(testDigest, nil).
 		Once()
 
@@ -198,9 +198,7 @@ func (suite *HubIntegrationTestSuite) TestConnectionAfterPairing() {
 
 	// Verify pairing announcement is removed (devZ should delete service after connection)
 	status := suite.sut.GetPairingServiceStatus()
-	if status != nil {
-		assert.False(suite.T(), status.AnnouncerActive)
-	}
+	assert.False(suite.T(), status.AnnouncerActive)
 }
 
 func (suite *HubIntegrationTestSuite) TestAutonomousBehavior() {
@@ -219,7 +217,7 @@ func (suite *HubIntegrationTestSuite) TestPairingServiceOptional() {
 	// Test that pairing announcer handles missing configuration gracefully
 
 	// Should error when trying to announce without configuration
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "testski",
 		Fingerprint: "test-fp",
 		ShipID:      "test-id",
@@ -242,14 +240,14 @@ func (suite *HubIntegrationTestSuite) TestConcurrentPairingOperations() {
 	err := suite.sut.EnablePairingService(config)
 	assert.NoError(suite.T(), err)
 
-	target1 := &api.PairingTarget{SKI: "device1", ShipID: "id1", Fingerprint: "fp1"}
-	target2 := &api.PairingTarget{SKI: "device2", ShipID: "id2", Fingerprint: "fp2"}
+	target1 := api.PairingTarget{SKI: "device1", ShipID: "id1", Fingerprint: "fp1"}
+	target2 := api.PairingTarget{SKI: "device2", ShipID: "id2", Fingerprint: "fp2"}
 
 	// Mock dependencies for first announcement (should succeed)
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		mock.AnythingOfType("api.PairingSecret"),
-		mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xAA}, nil).Once()
+		mock.AnythingOfType("api.HMACParams")).Return([]byte{0xAA}, nil).Once()
 
 	// Setup mDNS expectations (only one should succeed due to already active check)
 	suite.mockPairingMdns.EXPECT().
@@ -319,7 +317,7 @@ func (suite *HubIntegrationTestSuite) TestConcurrentPairingOperations() {
 	suite.sut.mux.Lock()
 	if suite.sut.announcing {
 		suite.sut.announcing = false
-		suite.sut.currentTarget = nil
+		suite.sut.currentTarget.Clear()
 	}
 	suite.sut.mux.Unlock()
 }
@@ -339,7 +337,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_Success() {
 	require.NoError(suite.T(), err)
 
 	// First start an announcement
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "targetdeviceski",
 		Fingerprint: "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      "i:983327_u:C8277H008F-3",
@@ -349,7 +347,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_Success() {
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		config.Secret,
-		mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
+		mock.AnythingOfType("api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockPairingMdns.EXPECT().
 		AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).
 		Return("active-instance-id", nil).Once()
@@ -375,12 +373,12 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_Success() {
 	// Verify state cleanup
 	status = suite.sut.GetAnnouncementStatus()
 	assert.False(suite.T(), status.Active)
-	assert.Nil(suite.T(), status.Target)
+	assert.Empty(suite.T(), status.Target)
 
 	// Verify internal state is cleaned up
 	suite.sut.mux.RLock()
 	assert.False(suite.T(), suite.sut.announcing)
-	assert.Nil(suite.T(), suite.sut.currentTarget)
+	assert.True(suite.T(), suite.sut.currentTarget.IsEmpty())
 	assert.Empty(suite.T(), suite.sut.currentInstanceID)
 	suite.sut.mux.RUnlock()
 }
@@ -419,7 +417,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_MdnsError() {
 	err := suite.sut.EnablePairingService(config)
 	require.NoError(suite.T(), err)
 
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "errordeviceski",
 		Fingerprint: "D74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      "i:error123_u:Error-Device",
@@ -429,7 +427,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_MdnsError() {
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x03, 0x04}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		config.Secret,
-		mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xCC, 0xDD}, nil).Once()
+		mock.AnythingOfType("api.HMACParams")).Return([]byte{0xCC, 0xDD}, nil).Once()
 	suite.mockPairingMdns.EXPECT().
 		AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).
 		Return("error-instance-id", nil).Once()
@@ -470,7 +468,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_ConcurrentOperations(
 	err := suite.sut.EnablePairingService(config)
 	require.NoError(suite.T(), err)
 
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "concurrentski",
 		Fingerprint: "E74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      "i:concurrent_u:Concurrent-Device",
@@ -480,7 +478,7 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_ConcurrentOperations(
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x05, 0x06}, nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		config.Secret,
-		mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xEE, 0xFF}, nil).Once()
+		mock.AnythingOfType("api.HMACParams")).Return([]byte{0xEE, 0xFF}, nil).Once()
 	suite.mockPairingMdns.EXPECT().
 		AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).
 		Return("concurrent-instance-id", nil).Once()
@@ -541,5 +539,5 @@ func (suite *HubIntegrationTestSuite) TestStopAnnouncement_ConcurrentOperations(
 	// Verify final state is clean
 	status := suite.sut.GetAnnouncementStatus()
 	assert.False(suite.T(), status.Active)
-	assert.Nil(suite.T(), status.Target)
+	assert.True(suite.T(), status.Target.IsEmpty())
 }

@@ -790,7 +790,7 @@ func main() {
 	// No additional setup needed!
 
 	// Step 6: Generate QR code for pairing
-	qrData, err := h.GeneratePairingQR(secret)
+	qrData, err := h.GeneratePairingQR()
 	if err != nil {
 		log.Fatal("Failed to generate QR code:", err)
 	}

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"sync"
 	"time"
 )
 
@@ -30,13 +29,8 @@ type ShipPairingServiceInterface interface {
 	// Returns a configured announcer ready to send pairing requests.
 	CreateAnnouncer(localService *ServiceDetails) PairingAnnouncerInterface
 
-	// PairingStateFor returns the current pairing state for the specified service.
-	// Returns the pairing state detail or an error if the service is not found.
-	PairingStateFor(service *ServiceDetails) (*PairingStateDetail, error)
-
-	// GetPairingStatus returns the overall status of the pairing service including
-	// statistics, current operations, and any error conditions.
-	GetPairingStatus() *PairingServiceStatus
+	// GetPairingStatus returns the overall status of the pairing service
+	GetPairingStatus() bool
 }
 
 // PairingAnnouncerInterface - Interface for devZ (announcer) operations
@@ -52,7 +46,7 @@ type PairingAnnouncerInterface interface {
 	// Returns:
 	//   - nil if announcement starts successfully (pairing may still be in progress)
 	//   - error if announcement cannot be started or target is invalid
-	Announce(target *PairingTarget) error
+	Announce(target PairingTarget) error
 
 	// StopAnnouncement cancels any active pairing announcement.
 	// This method safely stops the announcement process and cleans up resources.
@@ -61,7 +55,7 @@ type PairingAnnouncerInterface interface {
 
 	// GetAnnouncementStatus returns the current status of any active announcement.
 	// Provides information about announcement progress, attempts, and any errors.
-	GetAnnouncementStatus() *AnnouncementStatus
+	GetAnnouncementStatus() AnnouncementStatus
 }
 
 // PairingListenerInterface - Interface for devA (listener) operations
@@ -92,7 +86,7 @@ type PairingListenerInterface interface {
 
 	// GetListenerStatus returns the current status of the pairing listener.
 	// Provides information about listening activity, requests seen, and any errors.
-	GetListenerStatus() *ListenerStatus
+	GetListenerStatus() ListenerStatus
 
 	// ProcessPendingEntries processes a batch of pairing entries that were found
 	// but not yet processed. This is typically used when reactivating after
@@ -174,7 +168,7 @@ type PairingCryptoInterface interface {
 	//   - error if HMAC calculation fails
 	//
 	// Security: Uses HMAC-SHA256 with proper message construction per SHIP spec
-	CalculateDigest(secret PairingSecret, params *HMACParams) ([]byte, error)
+	CalculateDigest(secret PairingSecret, params HMACParams) ([]byte, error)
 
 	// ValidateDigest verifies an HMAC digest using constant-time comparison.
 	// Prevents timing attacks by ensuring validation always takes the same time
@@ -190,7 +184,7 @@ type PairingCryptoInterface interface {
 	//   - error if digests don't match or calculation fails
 	//
 	// Security: Uses constant-time comparison to prevent timing attacks
-	ValidateDigest(secret PairingSecret, params *HMACParams, expectedDigest []byte) error
+	ValidateDigest(secret PairingSecret, params HMACParams, expectedDigest []byte) error
 }
 
 // RingBufferPersistence - Application-implemented storage interface for SHIP pairing ring buffer
@@ -427,131 +421,17 @@ const (
 	PairingStateError                          // Pairing encountered error
 )
 
-// PairingStateDetail represents the detailed state of a pairing operation
-// Follows ship-go ConnectionStateDetail pattern
-type PairingStateDetail struct {
-	state     PairingState
-	error     error
-	timestamp time.Time
-
-	mux sync.Mutex
-}
-
-// NewPairingStateDetail creates a new PairingStateDetail with the specified state and error.
-// The timestamp is automatically set to the current time. This constructor follows the
-// ship-go pattern used by ConnectionStateDetail for consistent state management.
-//
-// Parameters:
-//   - state: The initial PairingState (e.g., PairingStateListening, PairingStateCompleted)
-//   - err: Optional error associated with the state (can be nil)
-//
-// Returns:
-//   - A new PairingStateDetail instance with thread-safe access to state information
-//
-// Thread-safety: The returned instance is safe for concurrent access
-func NewPairingStateDetail(state PairingState, err error) *PairingStateDetail {
-	return &PairingStateDetail{
-		state:     state,
-		error:     err,
-		timestamp: time.Now(),
-	}
-}
-
-// State returns the current pairing state in a thread-safe manner.
-// This method can be safely called from multiple goroutines simultaneously.
-//
-// Returns:
-//   - The current PairingState (e.g., PairingStateListening, PairingStateCompleted)
-func (p *PairingStateDetail) State() PairingState {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-
-	return p.state
-}
-
-// SetState updates the pairing state and timestamp in a thread-safe manner.
-// The timestamp is automatically updated to reflect when the state change occurred.
-// This method can be safely called from multiple goroutines simultaneously.
-//
-// Parameters:
-//   - state: The new PairingState to set
-func (p *PairingStateDetail) SetState(state PairingState) {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-
-	p.state = state
-	p.timestamp = time.Now()
-}
-
-// Error returns the current error associated with the pairing state in a thread-safe manner.
-// This method can be safely called from multiple goroutines simultaneously.
-//
-// Returns:
-//   - The current error, or nil if no error is set
-func (p *PairingStateDetail) Error() error {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-
-	return p.error
-}
-
-// SetError updates the error and timestamp in a thread-safe manner.
-// The timestamp is automatically updated to reflect when the error occurred.
-// This method can be safely called from multiple goroutines simultaneously.
-//
-// Parameters:
-//   - err: The error to set, or nil to clear the current error
-func (p *PairingStateDetail) SetError(err error) {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-
-	p.error = err
-	p.timestamp = time.Now()
-}
-
-// Timestamp returns when the state or error was last updated in a thread-safe manner.
-// This method can be safely called from multiple goroutines simultaneously.
-//
-// Returns:
-//   - The time.Time when the state was last modified via SetState() or SetError()
-func (p *PairingStateDetail) Timestamp() time.Time {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-
-	return p.timestamp
-}
-
 /* Status Types */
-
-// PairingServiceStatus represents the current status of the pairing service
-type PairingServiceStatus struct {
-	// Service state
-	Running         bool
-	ListenerActive  bool
-	AnnouncerActive bool
-
-	// Current operations
-	AnnouncingTo    *PairingTarget
-	ListeningActive bool
-
-	// Statistics
-	PairingsCompleted int
-	PairingsRejected  int
-	DigestsSeen       int
-
-	// Error information
-	LastError error
-}
 
 // AnnouncementStatus represents the status of an announcement operation
 type AnnouncementStatus struct {
-	Active      bool           // Currently announcing
-	Target      *PairingTarget // Target device
-	StartTime   time.Time      // When announcement started
-	Attempts    int            // Number of attempts made
-	LastAttempt time.Time      // Last attempt timestamp
-	Success     bool           // Whether pairing succeeded
-	Error       error          // Last error if any
+	Active      bool          // Currently announcing
+	Target      PairingTarget // Target device
+	StartTime   time.Time     // When announcement started
+	Attempts    int           // Number of attempts made
+	LastAttempt time.Time     // Last attempt timestamp
+	Success     bool          // Whether pairing succeeded
+	Error       error         // Last error if any
 }
 
 // ListenerStatus represents the status of a listener operation
@@ -569,6 +449,17 @@ type PairingTarget struct {
 	Fingerprint string // Target device certificate fingerprint (SHA-256)
 	ShipID      string // Target device SHIP ID (for connection)
 	Secret      []byte `json:"-"` // Secret for pairing (from QR code SPSEC field), excluded from JSON serialization
+}
+
+func (p *PairingTarget) Clear() {
+	p.SKI = ""
+	p.Fingerprint = ""
+	p.ShipID = ""
+	clear(p.Secret)
+}
+
+func (p *PairingTarget) IsEmpty() bool {
+	return len(p.SKI) == 0 || len(p.Fingerprint) == 0 || len(p.ShipID) == 0 || len(p.Secret) == 0
 }
 
 // DigestEntry represents a ring buffer entry per SHIP spec section 11

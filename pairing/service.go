@@ -104,46 +104,12 @@ func (s *Service) Shutdown() {
 	s.running = false
 }
 
-// PairingStateFor returns pairing state for given service (ServiceDetails-centric)
-func (s *Service) PairingStateFor(service *api.ServiceDetails) (*api.PairingStateDetail, error) {
-	if service == nil {
-		return nil, api.ErrServiceNil
-	}
-
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-
-	if !s.running {
-		return nil, api.ErrServiceNotStarted
-	}
-
-	return api.NewPairingStateDetail(api.PairingStateNone, nil), nil
-}
-
 // GetPairingStatus returns overall pairing service status (implements ShipPairingServiceInterface)
-func (s *Service) GetPairingStatus() *api.PairingServiceStatus {
+func (s *Service) GetPairingStatus() bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
-	status := &api.PairingServiceStatus{
-		Running:         s.running,
-		ListenerActive:  false,
-		AnnouncerActive: false,
-		LastError:       nil,
-	}
-
-	// Get listener status if available
-	if s.listener != nil {
-		listenerStatus := s.listener.GetPairingServiceStatus()
-		if listenerStatus != nil {
-			status.ListenerActive = listenerStatus.ListenerActive
-			if listenerStatus.LastError != nil {
-				status.LastError = listenerStatus.LastError
-			}
-		}
-	}
-
-	return status
+	return s.running
 }
 
 // CreateAnnouncer creates a configured announcer component

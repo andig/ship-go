@@ -9,6 +9,8 @@ package api
 // BREAKING CHANGE v0.8.0: All methods now use ServiceIdentity instead of string parameters
 type HubInterface interface {
 	// Start the ConnectionsHub with all its services
+	//
+	// Returns error with description of the error that cannot be recovered from
 	Start() error
 
 	// close all connections
@@ -51,8 +53,83 @@ type HubInterface interface {
 
 	// Cancels the pairing process for a ServiceIdentity
 	CancelPairing(identity ServiceIdentity)
-}
 
+	// check if auto accept is true
+	IsAutoAcceptEnabled() bool
+
+	// Get Service Details for a ServiceIdentity
+	ServiceFor(identity ServiceIdentity) *ServiceDetails
+
+	// Get Service Details for a Service SKI and fingerprint
+	ServiceForIdentifier(ski string, fingerprint string) *ServiceDetails
+
+	// Sets the maximum number of simultaneous connections allowed
+	// A value of 0 or less will use the default of 10
+	SetMaxConnections(max int)
+
+	// Calculate SHA-256 fingerprint of Hub's certificate
+	//
+	// Returns:
+	//  string:
+	//  error: ErrInvalidCertificate if invalid or no certificate was provided
+	GetLocalCertificateFingerprint() (string, error)
+
+	// Generate a QR code string for pairing. The generated text will include the SHIP Pairing Service fields if
+	// The pairing service is available in listener mode with a secret key provided. Otherwise, standard SHIP QRCode format
+	// is generated.
+	//
+	// Returns:
+	//  string:
+	//  error: ErrInvalidSecret if the provided secret is invalid
+	//  error: ErrSecretTooShort if the provided secret length is too short
+	//  error: ErrInvalidCertificate if the provided certificate is invalid
+	GeneratePairingQR() (string, error)
+
+	// **************************
+	// SHIP Pairing Service APIs
+	// **************************
+
+	// SetPairingService configures the optional pairing service
+	// Used by devA and devZ.
+	SetPairingService(service ShipPairingServiceInterface) error
+
+	// PairingService returns the pairing service
+	// Used by devA and devZ.
+	PairingService() ShipPairingServiceInterface
+
+	// Start announcing pairing to a specific target device
+	// Used by devZ only.
+	//
+	// Parameters:
+	//  - target: Pairing target
+	StartAnnouncementTo(target PairingTarget) error
+
+	// Stop announcing pairing to a specific target device
+	// Used by devZ only.
+	//
+	// Parameters:
+	//  - shipID: Target SHIP ID
+	StopAnnouncementTo(shipID string) error
+
+	// Return true if currently announcing to a specific target device
+	// Used by devZ only.
+	//
+	// Parameters:
+	//  - shipID: Target SHIP ID
+	IsAnnouncingTo(shipID string) bool
+
+	// SHIP Pairing: Get Active Announcements.
+	// Used by devZ only.
+	//
+	// Returns: List of SHIP IDs currently being announced to
+	GetActiveAnnouncements() []string
+
+	// SHIP Pairing: Get the SHIP ID and Fingerprint of controlbox paired via SHIP Pairing
+	// Used by devA only.
+	//
+	// Returns: the fingerprint and ShipID of any trusted AddCu device, respectively. Or empty string if none
+	HasTrustedAddCuDevice() (string, string)
+}
 
 // Interface to pass information from the hub to the eebus service
 //
@@ -83,4 +160,3 @@ type HubReaderInterface interface {
 	// return if the user is still able to trust the connection
 	AllowWaitingForTrust(identity ServiceIdentity) bool
 }
-

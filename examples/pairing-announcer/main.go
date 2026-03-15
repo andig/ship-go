@@ -507,7 +507,7 @@ func main() {
 	}
 
 	qrStrings := flag.Args()
-	var targets []*api.PairingTarget
+	var targets []api.PairingTarget
 
 	fmt.Printf("🔍 Parsing %d QR string(s)...\n", len(qrStrings))
 
@@ -542,7 +542,7 @@ func main() {
 		fmt.Printf("  - Certificate Fingerprint: %s\n", shipData.Fingerprint)
 		fmt.Printf("  - Pairing Secret: %s\n", hex.EncodeToString(shipData.Secret))
 
-		target := &api.PairingTarget{
+		target := api.PairingTarget{
 			SKI:         shipData.SKI,
 			Fingerprint: shipData.Fingerprint,
 			ShipID:      shipData.ShipID,

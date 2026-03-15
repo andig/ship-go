@@ -108,11 +108,11 @@ func (l *PairingListener) StopListening() error {
 }
 
 // GetListenerStatus returns current listener status (implements PairingListenerInterface)
-func (l *PairingListener) GetListenerStatus() *api.ListenerStatus {
+func (l *PairingListener) GetListenerStatus() api.ListenerStatus {
 	l.mux.RLock()
 	defer l.mux.RUnlock()
 
-	return &api.ListenerStatus{
+	return api.ListenerStatus{
 		Active:       l.listening,
 		StartTime:    l.startTime,
 		RequestsSeen: l.requestsSeen,
@@ -210,7 +210,7 @@ func (l *PairingListener) handlePairingRequest(txtRecord *api.ShipPairingTXT) bo
 	}
 
 	// Validate HMAC digest
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: txtRecord.Alg,
 		Nonce:     nonce,
 		TxtRecord: txtRecord,

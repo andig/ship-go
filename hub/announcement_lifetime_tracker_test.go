@@ -38,7 +38,7 @@ func (s *AnnouncementLifetimeTrackerSuite) AfterTest(suiteName, testName string)
 func newAnnouncementLifetimeTrackerWithCustomTimeout(timeout time.Duration) *AnnouncementLifetimeTracker {
 	return &AnnouncementLifetimeTracker{
 		timeout: timeout,
-		timers:  make(map[string]*lifetimeTimer),
+		timers:  make(map[string]lifetimeTimer),
 	}
 }
 
@@ -199,10 +199,11 @@ func (s *AnnouncementLifetimeTrackerSuite) TestConcurrentAccess() {
 
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {
-			wg.Add(3)
+			wg.Add(4)
 			go func() { defer wg.Done(); s.tracker.StartLifetimeTimer("ship", func(string) {}) }()
 			go func() { defer wg.Done(); _ = s.tracker.IsTimerActive("ship") }()
 			go func() { defer wg.Done(); s.tracker.CancelLifetimeTimer("ship") }()
+			go func() { defer wg.Done(); s.tracker.StopAll() }()
 		}
 		wg.Wait()
 	})

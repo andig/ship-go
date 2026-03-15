@@ -59,14 +59,14 @@ func (suite *ServiceTestSuite) TestServiceLifecycle() {
 
 	// Initial state
 	status := suite.sut.GetPairingStatus()
-	assert.False(suite.T(), status.Running)
+	assert.False(suite.T(), status)
 
 	// Start service
 	err := suite.sut.Start()
 	assert.NoError(suite.T(), err)
 
 	status = suite.sut.GetPairingStatus()
-	assert.True(suite.T(), status.Running)
+	assert.True(suite.T(), status)
 
 	// Start again should fail
 	err = suite.sut.Start()
@@ -77,7 +77,7 @@ func (suite *ServiceTestSuite) TestServiceLifecycle() {
 	suite.sut.Shutdown()
 
 	status = suite.sut.GetPairingStatus()
-	assert.False(suite.T(), status.Running)
+	assert.False(suite.T(), status)
 }
 
 func (suite *ServiceTestSuite) TestShutdown_ServiceStateOnly() {
@@ -108,13 +108,13 @@ func (suite *ServiceTestSuite) TestShutdown_ServiceStateOnly() {
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte("test-nonce-1234567890123456"), nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		mock.AnythingOfType("api.PairingSecret"),
-		mock.AnythingOfType("*api.HMACParams"),
+		mock.AnythingOfType("api.HMACParams"),
 	).Return([]byte("mock-digest-123456789012345678901234567890"), nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(
 		mock.AnythingOfType("*api.ShipPairingTXT"),
 	).Return("test-instance-id", nil).Once()
 
-	target := &api.PairingTarget{SKI: "targetski"}
+	target := api.PairingTarget{SKI: "targetski"}
 	err = announcer.Announce(target)
 	require.NoError(suite.T(), err)
 
@@ -167,7 +167,6 @@ func (suite *ServiceTestSuite) TestShutdown_StatelessBehavior() {
 	assert.Equal(suite.T(), status.Active, statusAfter.Active, "Announcer state should be unaffected by Service shutdown")
 }
 
-
 func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances() {
 	// Test that CreateAnnouncer creates independent announcer instances (stateless factory)
 
@@ -192,13 +191,13 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	err = concreteAnnouncer1.EnablePairingService(config1)
 	require.NoError(suite.T(), err)
 
-	target1 := &api.PairingTarget{SKI: "target1"}
+	target1 := api.PairingTarget{SKI: "target1"}
 
 	// Mock mDNS for first announcer
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte("test-nonce-1234567890123456"), nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		mock.AnythingOfType("api.PairingSecret"),
-		mock.AnythingOfType("*api.HMACParams"),
+		mock.AnythingOfType("api.HMACParams"),
 	).Return([]byte("mock-digest-123456789012345678901234567890"), nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(
 		mock.AnythingOfType("*api.ShipPairingTXT"),
@@ -217,7 +216,7 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	announcer2 := suite.sut.CreateAnnouncer(localService2)
 	assert.NotNil(suite.T(), announcer2)
 
-	// Enable and start second announcer  
+	// Enable and start second announcer
 	concreteAnnouncer2, ok := announcer2.(*PairingAnnouncer)
 	require.True(suite.T(), ok)
 
@@ -229,13 +228,13 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	err = concreteAnnouncer2.EnablePairingService(config2)
 	require.NoError(suite.T(), err)
 
-	target2 := &api.PairingTarget{SKI: "target2"}
+	target2 := api.PairingTarget{SKI: "target2"}
 
 	// Mock mDNS for second announcer
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte("test-nonce-abcdefgh12345678"), nil).Once()
 	suite.mockCrypto.EXPECT().CalculateDigest(
 		mock.AnythingOfType("api.PairingSecret"),
-		mock.AnythingOfType("*api.HMACParams"),
+		mock.AnythingOfType("api.HMACParams"),
 	).Return([]byte("mock-digest-abcdefgh12345678901234567890"), nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(
 		mock.AnythingOfType("*api.ShipPairingTXT"),
@@ -403,43 +402,8 @@ func (suite *ServiceTestSuite) TestShutdown_CleansUpBothComponents() {
 	// Verify service stopped and listener cleaned up (announcer unaffected)
 	assert.False(suite.T(), suite.sut.running, "Service should be stopped")
 	assert.False(suite.T(), concreteListener.listening, "Listener should be stopped by Service shutdown")
-	
+
 	// Announcer should remain unaffected (stateless factory pattern)
 	announcerStatus := announcer.GetAnnouncementStatus()
 	assert.False(suite.T(), announcerStatus.Active, "Announcer starts inactive in this test")
-}
-
-func (suite *ServiceTestSuite) TestPairingStateFor() {
-	// Test ServiceDetails-based pairing state retrieval
-
-	// Service not started
-	service := api.NewServiceDetails("testski", "", "")
-	_, err := suite.sut.PairingStateFor(service)
-	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), api.ErrServiceNotStarted, err)
-
-	// Test nil service
-	_, err = suite.sut.PairingStateFor(nil)
-	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), api.ErrServiceNil, err)
-
-	// Start service
-	err = suite.sut.Start()
-	assert.NoError(suite.T(), err)
-
-	// Get state with ServiceDetails
-	state, err := suite.sut.PairingStateFor(service)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), api.PairingStateNone, state.State())
-}
-
-func (suite *ServiceTestSuite) TestGetPairingStatus() {
-	// Test status reporting
-
-	status := suite.sut.GetPairingStatus()
-	assert.NotNil(suite.T(), status)
-	assert.False(suite.T(), status.Running)
-	assert.False(suite.T(), status.ListenerActive)
-	assert.False(suite.T(), status.AnnouncerActive)
-	assert.Nil(suite.T(), status.LastError)
 }

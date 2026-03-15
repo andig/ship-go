@@ -55,7 +55,7 @@ type PairingAnnouncer struct {
 	enabled    bool
 
 	// Current announcement state (protected by mutex)
-	currentTarget     *api.PairingTarget
+	currentTarget     api.PairingTarget
 	announcing        bool
 	currentInstanceID string // mDNS instance ID for current announcement
 	mux               sync.RWMutex
@@ -107,7 +107,7 @@ func (p *PairingAnnouncer) EnablePairingService(config *PairingConfiguration) er
 }
 
 // AnnounceToDevice announces pairing request to target device (devZ mode)
-func (p *PairingAnnouncer) AnnounceToDevice(target *api.PairingTarget) error {
+func (p *PairingAnnouncer) AnnounceToDevice(target api.PairingTarget) error {
 	p.mux.Lock()
 	defer p.mux.Unlock()
 
@@ -146,7 +146,7 @@ func (p *PairingAnnouncer) AnnounceToDevice(target *api.PairingTarget) error {
 	}
 
 	// Calculate HMAC digest
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: api.AlgorithmHMACSHA256,
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -175,7 +175,7 @@ func (p *PairingAnnouncer) AnnounceToDevice(target *api.PairingTarget) error {
 }
 
 // Announce announces pairing request to target device (implements PairingAnnouncerInterface)
-func (p *PairingAnnouncer) Announce(target *api.PairingTarget) error {
+func (p *PairingAnnouncer) Announce(target api.PairingTarget) error {
 	return p.AnnounceToDevice(target)
 }
 
@@ -197,18 +197,18 @@ func (p *PairingAnnouncer) StopAnnouncement() error {
 
 	// Reset state
 	p.announcing = false
-	p.currentTarget = nil
+	p.currentTarget.Clear()
 	p.currentInstanceID = ""
 
 	return nil
 }
 
 // GetAnnouncementStatus returns current announcement status (implements PairingAnnouncerInterface)
-func (p *PairingAnnouncer) GetAnnouncementStatus() *api.AnnouncementStatus {
+func (p *PairingAnnouncer) GetAnnouncementStatus() api.AnnouncementStatus {
 	p.mux.RLock()
 	defer p.mux.RUnlock()
 
-	status := &api.AnnouncementStatus{
+	status := api.AnnouncementStatus{
 		Active: p.announcing,
 		Target: p.currentTarget,
 	}
@@ -217,15 +217,11 @@ func (p *PairingAnnouncer) GetAnnouncementStatus() *api.AnnouncementStatus {
 }
 
 // GetPairingServiceStatus returns current pairing service status
-func (p *PairingAnnouncer) GetPairingServiceStatus() *PairingServiceStatus {
+func (p *PairingAnnouncer) GetPairingServiceStatus() PairingServiceStatus {
 	p.mux.RLock()
 	defer p.mux.RUnlock()
 
-	if !p.enabled {
-		return nil
-	}
-
-	return &PairingServiceStatus{
+	return PairingServiceStatus{
 		Enabled:         p.enabled,
 		Mode:            PairingModeAnnouncer,
 		AnnouncerActive: p.announcing,
@@ -252,7 +248,7 @@ func (p *PairingAnnouncer) OnConnectionEstablished(ski string) {
 	if p.announcing && p.mdns != nil && p.currentInstanceID != "" {
 		_ = p.mdns.UnannouncePairingService(p.currentInstanceID)
 		p.announcing = false
-		p.currentTarget = nil
+		p.currentTarget.Clear()
 		p.currentInstanceID = ""
 	}
 }

@@ -37,7 +37,7 @@ func (_m *PairingCryptoInterface) EXPECT() *PairingCryptoInterface_Expecter {
 }
 
 // CalculateDigest provides a mock function for the type PairingCryptoInterface
-func (_mock *PairingCryptoInterface) CalculateDigest(secret api.PairingSecret, params *api.HMACParams) ([]byte, error) {
+func (_mock *PairingCryptoInterface) CalculateDigest(secret api.PairingSecret, params api.HMACParams) ([]byte, error) {
 	ret := _mock.Called(secret, params)
 
 	if len(ret) == 0 {
@@ -46,17 +46,17 @@ func (_mock *PairingCryptoInterface) CalculateDigest(secret api.PairingSecret, p
 
 	var r0 []byte
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, *api.HMACParams) ([]byte, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, api.HMACParams) ([]byte, error)); ok {
 		return returnFunc(secret, params)
 	}
-	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, *api.HMACParams) []byte); ok {
+	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, api.HMACParams) []byte); ok {
 		r0 = returnFunc(secret, params)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(api.PairingSecret, *api.HMACParams) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(api.PairingSecret, api.HMACParams) error); ok {
 		r1 = returnFunc(secret, params)
 	} else {
 		r1 = ret.Error(1)
@@ -71,20 +71,20 @@ type PairingCryptoInterface_CalculateDigest_Call struct {
 
 // CalculateDigest is a helper method to define mock.On call
 //   - secret api.PairingSecret
-//   - params *api.HMACParams
+//   - params api.HMACParams
 func (_e *PairingCryptoInterface_Expecter) CalculateDigest(secret interface{}, params interface{}) *PairingCryptoInterface_CalculateDigest_Call {
 	return &PairingCryptoInterface_CalculateDigest_Call{Call: _e.mock.On("CalculateDigest", secret, params)}
 }
 
-func (_c *PairingCryptoInterface_CalculateDigest_Call) Run(run func(secret api.PairingSecret, params *api.HMACParams)) *PairingCryptoInterface_CalculateDigest_Call {
+func (_c *PairingCryptoInterface_CalculateDigest_Call) Run(run func(secret api.PairingSecret, params api.HMACParams)) *PairingCryptoInterface_CalculateDigest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 api.PairingSecret
 		if args[0] != nil {
 			arg0 = args[0].(api.PairingSecret)
 		}
-		var arg1 *api.HMACParams
+		var arg1 api.HMACParams
 		if args[1] != nil {
-			arg1 = args[1].(*api.HMACParams)
+			arg1 = args[1].(api.HMACParams)
 		}
 		run(
 			arg0,
@@ -99,7 +99,7 @@ func (_c *PairingCryptoInterface_CalculateDigest_Call) Return(bytes []byte, err 
 	return _c
 }
 
-func (_c *PairingCryptoInterface_CalculateDigest_Call) RunAndReturn(run func(secret api.PairingSecret, params *api.HMACParams) ([]byte, error)) *PairingCryptoInterface_CalculateDigest_Call {
+func (_c *PairingCryptoInterface_CalculateDigest_Call) RunAndReturn(run func(secret api.PairingSecret, params api.HMACParams) ([]byte, error)) *PairingCryptoInterface_CalculateDigest_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -160,7 +160,7 @@ func (_c *PairingCryptoInterface_GenerateNonce_Call) RunAndReturn(run func() ([]
 }
 
 // ValidateDigest provides a mock function for the type PairingCryptoInterface
-func (_mock *PairingCryptoInterface) ValidateDigest(secret api.PairingSecret, params *api.HMACParams, expectedDigest []byte) error {
+func (_mock *PairingCryptoInterface) ValidateDigest(secret api.PairingSecret, params api.HMACParams, expectedDigest []byte) error {
 	ret := _mock.Called(secret, params, expectedDigest)
 
 	if len(ret) == 0 {
@@ -168,7 +168,7 @@ func (_mock *PairingCryptoInterface) ValidateDigest(secret api.PairingSecret, pa
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, *api.HMACParams, []byte) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(api.PairingSecret, api.HMACParams, []byte) error); ok {
 		r0 = returnFunc(secret, params, expectedDigest)
 	} else {
 		r0 = ret.Error(0)
@@ -183,21 +183,21 @@ type PairingCryptoInterface_ValidateDigest_Call struct {
 
 // ValidateDigest is a helper method to define mock.On call
 //   - secret api.PairingSecret
-//   - params *api.HMACParams
+//   - params api.HMACParams
 //   - expectedDigest []byte
 func (_e *PairingCryptoInterface_Expecter) ValidateDigest(secret interface{}, params interface{}, expectedDigest interface{}) *PairingCryptoInterface_ValidateDigest_Call {
 	return &PairingCryptoInterface_ValidateDigest_Call{Call: _e.mock.On("ValidateDigest", secret, params, expectedDigest)}
 }
 
-func (_c *PairingCryptoInterface_ValidateDigest_Call) Run(run func(secret api.PairingSecret, params *api.HMACParams, expectedDigest []byte)) *PairingCryptoInterface_ValidateDigest_Call {
+func (_c *PairingCryptoInterface_ValidateDigest_Call) Run(run func(secret api.PairingSecret, params api.HMACParams, expectedDigest []byte)) *PairingCryptoInterface_ValidateDigest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 api.PairingSecret
 		if args[0] != nil {
 			arg0 = args[0].(api.PairingSecret)
 		}
-		var arg1 *api.HMACParams
+		var arg1 api.HMACParams
 		if args[1] != nil {
-			arg1 = args[1].(*api.HMACParams)
+			arg1 = args[1].(api.HMACParams)
 		}
 		var arg2 []byte
 		if args[2] != nil {
@@ -217,7 +217,7 @@ func (_c *PairingCryptoInterface_ValidateDigest_Call) Return(err error) *Pairing
 	return _c
 }
 
-func (_c *PairingCryptoInterface_ValidateDigest_Call) RunAndReturn(run func(secret api.PairingSecret, params *api.HMACParams, expectedDigest []byte) error) *PairingCryptoInterface_ValidateDigest_Call {
+func (_c *PairingCryptoInterface_ValidateDigest_Call) RunAndReturn(run func(secret api.PairingSecret, params api.HMACParams, expectedDigest []byte) error) *PairingCryptoInterface_ValidateDigest_Call {
 	_c.Call.Return(run)
 	return _c
 }

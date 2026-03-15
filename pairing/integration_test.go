@@ -123,11 +123,11 @@ func (suite *IntegrationTestSuite) TestCompleteAnnouncerListenerFlow() {
 
 	// Setup announcement mocks for devZ
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
-	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
+	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).Return("test-instance-id", nil).Once()
 
 	// Create target (devA from perspective of devZ)
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         "heatpumpski",
 		Fingerprint: "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		ShipID:      suite.devAService.ShipID(),
@@ -153,7 +153,7 @@ func (suite *IntegrationTestSuite) TestCompleteAnnouncerListenerFlow() {
 	}
 
 	// Setup listener validation mocks
-	suite.mockCrypto.EXPECT().ValidateDigest(suite.sharedSecret, mock.AnythingOfType("*api.HMACParams"), []byte{0xAA, 0xBB}).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams"), []byte{0xAA, 0xBB}).Return(nil).Once()
 	suite.mockHistoryA.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, "AABB").Return(false).Once()
 	suite.mockHistoryA.EXPECT().RecordPairing(api.AlgorithmHMACSHA256, "AABB").Return().Once()
 	// Note: ShouldAutoTrust removed - SHIP Pairing Service is autonomous
@@ -185,15 +185,13 @@ func (suite *IntegrationTestSuite) TestServiceOrchestration() {
 
 	// Verify service status
 	status := suite.service.GetPairingStatus()
-	assert.True(suite.T(), status.Running)
-	assert.False(suite.T(), status.AnnouncerActive)
-	assert.False(suite.T(), status.ListenerActive)
+	assert.True(suite.T(), status)
 
 	// Shutdown service
 	suite.service.Shutdown()
 
 	status = suite.service.GetPairingStatus()
-	assert.False(suite.T(), status.Running)
+	assert.False(suite.T(), status)
 }
 
 func (suite *IntegrationTestSuite) TestReplayAttackPrevention() {
@@ -212,7 +210,7 @@ func (suite *IntegrationTestSuite) TestReplayAttackPrevention() {
 	announcement.TrustId = suite.devZService.ShipID()
 
 	// First attempt - should succeed
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
 	suite.mockHistoryA.EXPECT().HasSeenDigest(announcement.Alg, announcement.Digest).Return(false).Once() // Not seen before
 	suite.mockHistoryA.EXPECT().RecordPairing(announcement.Alg, announcement.Digest).Return().Once()
 	// Note: ShouldAutoTrust removed - SHIP Pairing Service is autonomous
@@ -227,7 +225,7 @@ func (suite *IntegrationTestSuite) TestReplayAttackPrevention() {
 	assert.NoError(suite.T(), err)
 
 	// Second attempt with same digest - should detect replay
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
 	suite.mockHistoryA.EXPECT().HasSeenDigest(announcement.Alg, announcement.Digest).Return(true).Once() // Already seen - replay!
 	suite.mockHubA.EXPECT().OnPairingFailure(announcement.TrustId, announcement.TrustPar, api.ErrReplayAttackDetected).Return().Once()
 
@@ -243,7 +241,7 @@ func (suite *IntegrationTestSuite) TestFailureScenarios() {
 	// Test various failure scenarios in the pairing flow
 
 	// Test 1: Invalid HMAC should not affect announcer
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         suite.devAService.SKI(),
 		Fingerprint: "INVALID_FINGERPRINT",
 		ShipID:      suite.devAService.ShipID(),
@@ -260,7 +258,7 @@ func (suite *IntegrationTestSuite) TestFailureScenarios() {
 
 	// Mock crypto operations for announcement
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
-	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
+	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).Return("test-instance-id", nil).Once()
 
 	// Announce should succeed with real certificates
@@ -308,14 +306,14 @@ func (suite *IntegrationTestSuite) TestConnectionCleanupFlow() {
 	assert.NoError(suite.T(), err)
 
 	// Mock successful announcement
-	target := &api.PairingTarget{
+	target := api.PairingTarget{
 		SKI:         suite.devAService.SKI(),
 		Fingerprint: "HEAT_PUMP_FP",
 		ShipID:      suite.devAService.ShipID(),
 	}
 
 	suite.mockCrypto.EXPECT().GenerateNonce().Return([]byte{0x01, 0x02}, nil).Once()
-	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("*api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
+	suite.mockCrypto.EXPECT().CalculateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams")).Return([]byte{0xAA, 0xBB}, nil).Once()
 	suite.mockMdns.EXPECT().AnnouncePairingService(mock.AnythingOfType("*api.ShipPairingTXT")).Return("test-instance-id", nil).Once()
 
 	err = suite.announcer.Announce(target)

@@ -44,7 +44,7 @@ func (suite *ListenerTestSuite) SetupTest() {
 
 	// Setup test data
 	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
-	suite.localService.SetShipID("i:983327_u:C8277H008F-3")                  // devA from SHIP spec
+	suite.localService.SetShipID("i:983327_u:C8277H008F-3") // devA from SHIP spec
 	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 	suite.testSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE") // devA secret from spec
 
@@ -160,7 +160,7 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_ValidHMAC() {
 	suite.mockCrypto.EXPECT().
 		ValidateDigest(
 			suite.testSecret,
-			mock.MatchedBy(func(params *api.HMACParams) bool {
+			mock.MatchedBy(func(params api.HMACParams) bool {
 				return params.Algorithm == api.AlgorithmHMACSHA256 &&
 					len(params.Nonce) == len(expectedNonce)
 			}),
@@ -219,7 +219,7 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_InvalidHMAC() {
 
 	// Mock HMAC validation (should fail)
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(api.ErrInvalidHMACDigest).
 		Maybe()
 
@@ -263,7 +263,7 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_ReplayAttack() {
 
 	// Mock successful HMAC validation
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(nil).
 		Once()
 
@@ -302,7 +302,7 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_ForOurDevice() {
 	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
 
 	// Mock the autonomous validation chain for successful pairing
-	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Maybe()
+	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Maybe()
 	suite.mockHistory.EXPECT().HasSeenDigest(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(false).Maybe()
 	suite.mockHistory.EXPECT().RecordPairing(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return().Maybe()
 	// Note: ShouldAutoTrust removed - autonomous acceptance
@@ -392,7 +392,7 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
 
 	// Mock HMAC validation failure (since digest is invalid)
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(api.ErrInvalidHMACDigest).
 		Maybe()
 
@@ -604,7 +604,7 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NewDeviceAfterTimeout
 
 	// Mock HMAC validation - should succeed (key fix: we reach this point now)
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(nil).
 		Once()
 
@@ -658,7 +658,7 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_SameDeviceRepairing_S
 
 	// Mock HMAC validation - should succeed
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(nil).
 		Once()
 
@@ -714,7 +714,7 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_FailedHMACValidation_
 
 	// Mock HMAC validation - should fail
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(api.ErrInvalidHMACDigest).
 		Maybe()
 
@@ -751,7 +751,7 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NoExistingDevice_Shou
 
 	// Mock successful validation chain
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(nil).
 		Once()
 
@@ -801,7 +801,7 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_ReplayAttackDuringRep
 
 	// Mock successful HMAC validation
 	suite.mockCrypto.EXPECT().
-		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("*api.HMACParams"), mock.AnythingOfType("[]uint8")).
+		ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).
 		Return(nil).
 		Once()
 
@@ -946,7 +946,7 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_SingleValidRecord_Shou
 	suite.mockCrypto.EXPECT().
 		ValidateDigest(
 			suite.testSecret,
-			mock.MatchedBy(func(params *api.HMACParams) bool {
+			mock.MatchedBy(func(params api.HMACParams) bool {
 				return params.Algorithm == api.AlgorithmHMACSHA256
 			}),
 			expectedDigestBytes).

@@ -72,7 +72,7 @@ func (suite *HMACTestSuite) TestHMACCalculation_SpecificationTestVectors() {
 				Alg:        "hmacSha256",
 			}
 
-			params := &api.HMACParams{
+			params := api.HMACParams{
 				Algorithm: "hmacSha256",
 				Nonce:     nonce,
 				TxtRecord: txtRecord,
@@ -249,7 +249,7 @@ func (suite *HMACTestSuite) TestHMACValidation_TimingAttackProtection() {
 		Alg:        "hmacSha256",
 	}
 
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: "hmacSha256",
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -288,7 +288,7 @@ func (suite *HMACTestSuite) TestHMACValidation_ErrorCases() {
 		Alg:     "sha1", // Invalid algorithm
 	}
 
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: "sha1", // Invalid
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -312,13 +312,8 @@ func (suite *HMACTestSuite) TestHMACValidation_ErrorCases() {
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), api.ErrInvalidSecret, err)
 
-	// Test with nil params
-	_, err = calculator.CalculateDigest(secret, nil)
-	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), api.ErrHMACCalculationFailed, err)
-
 	// Test with nil TxtRecord
-	paramsWithNilTXT := &api.HMACParams{
+	paramsWithNilTXT := api.HMACParams{
 		Algorithm: "hmacSha256",
 		Nonce:     nonce,
 		TxtRecord: nil,
@@ -335,18 +330,13 @@ func (suite *HMACTestSuite) TestValidateDigest_CalculationErrors() {
 	secret := api.PairingSecret([]byte("test-secret"))
 	expectedDigest := []byte("some-digest")
 
-	// Test with nil params (should propagate CalculateDigest error)
-	err := calculator.ValidateDigest(secret, nil, expectedDigest)
-	assert.Error(suite.T(), err)
-	assert.Equal(suite.T(), api.ErrHMACCalculationFailed, err)
-
 	// Test with invalid algorithm (should propagate CalculateDigest error)
-	paramsWithInvalidAlg := &api.HMACParams{
+	paramsWithInvalidAlg := api.HMACParams{
 		Algorithm: "invalid-algorithm",
 		Nonce:     []byte("test-nonce"),
 		TxtRecord: &api.ShipPairingTXT{TxtVers: "1"},
 	}
-	err = calculator.ValidateDigest(secret, paramsWithInvalidAlg, expectedDigest)
+	err := calculator.ValidateDigest(secret, paramsWithInvalidAlg, expectedDigest)
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), api.ErrUnsupportedAlgorithm, err)
 }

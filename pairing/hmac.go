@@ -31,13 +31,10 @@ func (h *HMACCalculator) GenerateNonce() ([]byte, error) {
 }
 
 // CalculateDigest calculates HMAC-SHA256 digest per SHIP spec section 7
-func (h *HMACCalculator) CalculateDigest(secret api.PairingSecret, params *api.HMACParams) ([]byte, error) {
+func (h *HMACCalculator) CalculateDigest(secret api.PairingSecret, params api.HMACParams) ([]byte, error) {
 	// Validate inputs
 	if len(secret) == 0 {
 		return nil, api.ErrInvalidSecret
-	}
-	if params == nil {
-		return nil, api.ErrHMACCalculationFailed
 	}
 	if params.Algorithm != api.AlgorithmHMACSHA256 {
 		return nil, api.ErrUnsupportedAlgorithm
@@ -61,7 +58,7 @@ func (h *HMACCalculator) CalculateDigest(secret api.PairingSecret, params *api.H
 }
 
 // ValidateDigest validates HMAC digest with constant-time comparison
-func (h *HMACCalculator) ValidateDigest(secret api.PairingSecret, params *api.HMACParams, expectedDigest []byte) error {
+func (h *HMACCalculator) ValidateDigest(secret api.PairingSecret, params api.HMACParams, expectedDigest []byte) error {
 	// Calculate expected digest
 	calculatedDigest, err := h.CalculateDigest(secret, params)
 	if err != nil {

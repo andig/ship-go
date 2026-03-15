@@ -101,7 +101,7 @@ func (suite *PerformanceTestSuite) TestHMACCalculationPerformance() {
 		Alg:        "hmacSha256",
 	}
 
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: "hmacSha256",
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -158,7 +158,7 @@ func (suite *PerformanceTestSuite) TestHMACValidationPerformance() {
 		Alg:        "hmacSha256",
 	}
 
-	params := &api.HMACParams{
+	params := api.HMACParams{
 		Algorithm: "hmacSha256",
 		Nonce:     nonce,
 		TxtRecord: txtRecord,
@@ -290,7 +290,7 @@ func (suite *PerformanceTestSuite) TestConcurrentPairingLoad() {
 					Alg:        "hmacSha256",
 				}
 
-				params := &api.HMACParams{
+				params := api.HMACParams{
 					Algorithm: "hmacSha256",
 					Nonce:     nonce,
 					TxtRecord: txtRecord,
@@ -405,7 +405,7 @@ func (suite *PerformanceTestSuite) TestMemoryUsageUnderLoad() {
 			Alg:        "hmacSha256",
 		}
 
-		params := &api.HMACParams{
+		params := api.HMACParams{
 			Algorithm: "hmacSha256",
 			Nonce:     nonce,
 			TxtRecord: txtRecord,
@@ -491,7 +491,7 @@ func (suite *PerformanceTestSuite) TestLongRunningStabilityTest() {
 					Alg:        "hmacSha256",
 				}
 
-				params := &api.HMACParams{
+				params := api.HMACParams{
 					Algorithm: "hmacSha256",
 					Nonce:     nonce,
 					TxtRecord: txtRecord,

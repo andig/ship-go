@@ -2,7 +2,6 @@ package api
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -80,33 +79,6 @@ func (suite *ShipPairingTestSuite) TestPairingSecret_Equal() {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-/* PairingStateDetail Tests */
-
-func (suite *ShipPairingTestSuite) TestPairingStateDetail_ThreadSafety() {
-	// Test thread-safe state management following ConnectionStateDetail pattern
-	detail := NewPairingStateDetail(PairingStateNone, nil)
-
-	// Initial state
-	assert.Equal(suite.T(), PairingStateNone, detail.State())
-	assert.Nil(suite.T(), detail.Error())
-
-	// State change
-	detail.SetState(PairingStateAnnouncing)
-	assert.Equal(suite.T(), PairingStateAnnouncing, detail.State())
-
-	// Error setting
-	testErr := NewPairingValidationError("test error")
-	detail.SetError(testErr)
-	assert.Equal(suite.T(), testErr, detail.Error())
-
-	// Timestamp updates
-	initialTime := detail.Timestamp()
-	time.Sleep(1 * time.Millisecond)
-	detail.SetState(PairingStateCompleted)
-	newTime := detail.Timestamp()
-	assert.True(suite.T(), newTime.After(initialTime), "timestamp should update on state change")
 }
 
 /* ShipPairingTXT Tests */

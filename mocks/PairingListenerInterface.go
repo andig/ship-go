@@ -39,20 +39,18 @@ func (_m *PairingListenerInterface) EXPECT() *PairingListenerInterface_Expecter 
 }
 
 // GetListenerStatus provides a mock function for the type PairingListenerInterface
-func (_mock *PairingListenerInterface) GetListenerStatus() *api.ListenerStatus {
+func (_mock *PairingListenerInterface) GetListenerStatus() api.ListenerStatus {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetListenerStatus")
 	}
 
-	var r0 *api.ListenerStatus
-	if returnFunc, ok := ret.Get(0).(func() *api.ListenerStatus); ok {
+	var r0 api.ListenerStatus
+	if returnFunc, ok := ret.Get(0).(func() api.ListenerStatus); ok {
 		r0 = returnFunc()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*api.ListenerStatus)
-		}
+		r0 = ret.Get(0).(api.ListenerStatus)
 	}
 	return r0
 }
@@ -74,12 +72,12 @@ func (_c *PairingListenerInterface_GetListenerStatus_Call) Run(run func()) *Pair
 	return _c
 }
 
-func (_c *PairingListenerInterface_GetListenerStatus_Call) Return(listenerStatus *api.ListenerStatus) *PairingListenerInterface_GetListenerStatus_Call {
+func (_c *PairingListenerInterface_GetListenerStatus_Call) Return(listenerStatus api.ListenerStatus) *PairingListenerInterface_GetListenerStatus_Call {
 	_c.Call.Return(listenerStatus)
 	return _c
 }
 
-func (_c *PairingListenerInterface_GetListenerStatus_Call) RunAndReturn(run func() *api.ListenerStatus) *PairingListenerInterface_GetListenerStatus_Call {
+func (_c *PairingListenerInterface_GetListenerStatus_Call) RunAndReturn(run func() api.ListenerStatus) *PairingListenerInterface_GetListenerStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
