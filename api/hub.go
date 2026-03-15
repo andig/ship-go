@@ -65,7 +65,7 @@ type HubInterface interface {
 
 	// Sets the maximum number of simultaneous connections allowed
 	// A value of 0 or less will use the default of 10
-	SetMaxConnections(max int)
+	SetMaxConnections(maxConnections int)
 
 	// Calculate SHA-256 fingerprint of Hub's certificate
 	//

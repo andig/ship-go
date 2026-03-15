@@ -490,14 +490,14 @@ func (h *Hub) numberPairedServices() int {
 
 // SetMaxConnections sets the maximum number of simultaneous connections allowed
 // A value of 0 or less will use the default of 10
-func (h *Hub) SetMaxConnections(max int) {
+func (h *Hub) SetMaxConnections(maxConnections int) {
 	h.muxCon.Lock()
 	defer h.muxCon.Unlock()
 
-	if max <= 0 {
-		max = 10
+	if maxConnections <= 0 {
+		maxConnections = 10
 	}
-	h.maxConnections = max
+	h.maxConnections = maxConnections
 }
 
 // startup mDNS if a paired service is not connected

@@ -714,8 +714,8 @@ func (_c *HubInterface_SetAutoAccept_Call) RunAndReturn(run func(b bool)) *HubIn
 }
 
 // SetMaxConnections provides a mock function for the type HubInterface
-func (_mock *HubInterface) SetMaxConnections(max int) {
-	_mock.Called(max)
+func (_mock *HubInterface) SetMaxConnections(maxConnections int) {
+	_mock.Called(maxConnections)
 	return
 }
 
@@ -725,12 +725,12 @@ type HubInterface_SetMaxConnections_Call struct {
 }
 
 // SetMaxConnections is a helper method to define mock.On call
-//   - max int
-func (_e *HubInterface_Expecter) SetMaxConnections(max interface{}) *HubInterface_SetMaxConnections_Call {
-	return &HubInterface_SetMaxConnections_Call{Call: _e.mock.On("SetMaxConnections", max)}
+//   - maxConnections int
+func (_e *HubInterface_Expecter) SetMaxConnections(maxConnections interface{}) *HubInterface_SetMaxConnections_Call {
+	return &HubInterface_SetMaxConnections_Call{Call: _e.mock.On("SetMaxConnections", maxConnections)}
 }
 
-func (_c *HubInterface_SetMaxConnections_Call) Run(run func(max int)) *HubInterface_SetMaxConnections_Call {
+func (_c *HubInterface_SetMaxConnections_Call) Run(run func(maxConnections int)) *HubInterface_SetMaxConnections_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 int
 		if args[0] != nil {
@@ -748,7 +748,7 @@ func (_c *HubInterface_SetMaxConnections_Call) Return() *HubInterface_SetMaxConn
 	return _c
 }
 
-func (_c *HubInterface_SetMaxConnections_Call) RunAndReturn(run func(max int)) *HubInterface_SetMaxConnections_Call {
+func (_c *HubInterface_SetMaxConnections_Call) RunAndReturn(run func(maxConnections int)) *HubInterface_SetMaxConnections_Call {
 	_c.Run(run)
 	return _c
 }
