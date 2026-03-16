@@ -141,10 +141,10 @@ type ShipConnectionInfoProviderInterface interface {
 	//
 	// Parameters:
 	// - ski: SKI of the remote service
-	// - shipid: SHIP ID of the remote service
+	// - shipID: SHIP ID of the remote service
 	//
 	// Used during: SHIP handshake when service information is discovered/updated
-	ReportServiceShipID(ski string, shipid string)
+	ReportServiceShipID(ski string, shipID string)
 
 	// AllowWaitingForTrust determines if the connection should continue waiting for user trust confirmation.
 	//

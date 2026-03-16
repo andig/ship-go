@@ -35,15 +35,17 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 		h.removeConnectionAttemptCounter(connection.RemoteSKI())
 	}
 
-	// Convert SKI to ServiceIdentity for callback
-	disconnectedIdentity := api.SKIToServiceIdentity(connection.RemoteSKI())
-	h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
-
 	// Do not automatically reconnect if handshake failed and not already paired
 	remoteService := h.ServiceForIdentifier(connection.RemoteSKI(), "")
 	if remoteService == nil || (!handshakeCompleted && !remoteService.Trusted()) {
+		// Convert SKI to ServiceIdentity for callback
+		disconnectedIdentity := api.SKIToServiceIdentity(connection.RemoteSKI())
+		h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
 		return
 	}
+
+	disconnectedIdentity := remoteService.ToServiceIdentity()
+	h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
 
 	// Cancel any announcement lifetime timer for this device
 	if remoteService.ShipID() != "" {
@@ -61,37 +63,34 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 }
 
 // report the ship ID provided during the handshake
-func (h *Hub) ReportServiceShipID(ski string, shipdID string) {
+func (h *Hub) ReportServiceShipID(ski string, shipID string) {
 	// Update registry with discovered ShipID if it was empty
-	if service := h.ServiceForIdentifier(ski, ""); service != nil && service.ShipID() == "" {
-		service.SetShipID(shipdID)
+	service := h.ServiceForIdentifier(ski, "")
+	if service == nil {
+		return
+	}
+	if service.ShipID() == "" {
+		service.SetShipID(shipID)
 	}
 
-	// Convert SKI to ServiceIdentity for callbacks
-	connectedIdentity := api.SKIToServiceIdentity(ski)
-	h.hubReader.RemoteServiceConnected(connectedIdentity)
+	// Get ServiceIdentity for callbacks
+	connectedIdentity := service.ToServiceIdentity()
 
-	// For ServiceUpdated, we need to build a complete ServiceIdentity with the ShipID
-	updatedIdentity := api.ServiceIdentity{
-		SKI:         ski,
-		Fingerprint: "",
-		ShipID:      shipdID,
-		PairingType: api.PairingTypeDefault,
-		IPv4:        "",
-	}
-	h.hubReader.ServiceUpdated(updatedIdentity)
+	h.hubReader.ServiceUpdated(connectedIdentity)
 }
 
 // check if the user is still able to trust the connection
 func (h *Hub) AllowWaitingForTrust(ski string) bool {
+	var waitingIdentity api.ServiceIdentity
 	if service := h.ServiceForIdentifier(ski, ""); service != nil {
 		if service.Trusted() {
 			return true
 		}
+		waitingIdentity = service.ToServiceIdentity()
+	} else {
+		waitingIdentity = api.SKIToServiceIdentity(ski)
 	}
 
-	// Convert SKI to ServiceIdentity for callback
-	waitingIdentity := api.SKIToServiceIdentity(ski)
 	return h.hubReader.AllowWaitingForTrust(waitingIdentity)
 }
 
@@ -121,10 +120,10 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 		service.SetConnectionStateDetail(pairingDetail)
 
 		if pairingState == api.ConnectionStateCompleted {
+			connectedIdentity := service.ToServiceIdentity()
+			h.hubReader.RemoteServiceConnected(connectedIdentity)
 			// Stop AddCu replacement timer when connection successfully completes
 			// Stop announcement for successfully connected device
-			connectedIdentity := api.SKIToServiceIdentity(ski)
-			h.hubReader.RemoteServiceConnected(connectedIdentity)
 			h.StopAddCuReplacementTimer(service)
 
 			// Stop the pairing listener we have a AddCu device successful connection
@@ -149,7 +148,7 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 		go func() {
 			<-time.After(time.Millisecond * 500)
 			// Convert SKI to ServiceIdentity for callback
-			pairingIdentity := api.SKIToServiceIdentity(ski)
+			pairingIdentity := service.ToServiceIdentity()
 			h.hubReader.ServicePairingDetailUpdate(pairingIdentity, pairingDetail)
 		}()
 	}
@@ -158,6 +157,11 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 // report an approved handshake by a remote device
 func (h *Hub) SetupRemoteService(ski string, writeI api.ShipConnectionDataWriterInterface) api.ShipConnectionDataReaderInterface {
 	// Convert SKI to ServiceIdentity for callback
-	setupIdentity := api.SKIToServiceIdentity(ski)
+	var setupIdentity api.ServiceIdentity
+	if service := h.ServiceForIdentifier(ski, ""); service != nil {
+		setupIdentity = service.ToServiceIdentity()
+	} else {
+		setupIdentity = api.SKIToServiceIdentity(ski)
+	}
 	return h.hubReader.SetupRemoteService(setupIdentity, writeI)
 }

@@ -161,7 +161,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if connectionStateDetail.State() == api.ConnectionStateQueued {
 		connectionStateDetail.SetState(api.ConnectionStateReceivedPairingRequest)
 		// Convert SKI to ServiceIdentity for callback
-		pairingIdentity := api.SKIToServiceIdentity(ski)
+		pairingIdentity := service.ToServiceIdentity()
 		h.hubReader.ServicePairingDetailUpdate(pairingIdentity, connectionStateDetail)
 	}
 

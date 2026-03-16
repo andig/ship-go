@@ -276,8 +276,8 @@ func (_c *ShipConnectionInfoProviderInterface_IsRemoteServiceForSKIPaired_Call) 
 }
 
 // ReportServiceShipID provides a mock function for the type ShipConnectionInfoProviderInterface
-func (_mock *ShipConnectionInfoProviderInterface) ReportServiceShipID(ski string, shipid string) {
-	_mock.Called(ski, shipid)
+func (_mock *ShipConnectionInfoProviderInterface) ReportServiceShipID(ski string, shipID string) {
+	_mock.Called(ski, shipID)
 	return
 }
 
