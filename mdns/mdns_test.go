@@ -987,7 +987,7 @@ func (s *MdnsSuite) Test_attemptResolveMapping_NoChanges() {
 
 	// Set initial state: both interfaces are "missing"
 	s.sut.missingIfaces = map[string]struct{}{
-		"fake_iface_12345":       {},
+		"fake_iface_12345":        {},
 		"nonexistent_iface_67890": {},
 	}
 	s.sut.currentIfaces = []string{}
@@ -1239,6 +1239,8 @@ func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
 	// Verify cleanup - ticker should have been stopped via defer
 	// We can't directly check if ticker.Stop() was called, but we can verify
 	// the goroutine exited without panic (defer cleanup executed successfully)
+}
+
 func (s *MdnsSuite) Test_AutoAcceptServiceUnannouncedYet() {
 	s.sut.mdnsProvider = s.sut.testProvider
 
