@@ -75,9 +75,16 @@ func (z *ZeroconfProvider) Announce(serviceName string, port int, txt []string) 
 	}
 
 	z.mux.Lock()
-	defer z.mux.Unlock()
-
+	oldServer := z.zc
 	z.zc = mDNSServer
+	z.mux.Unlock()
+
+	// Shut down the old server AFTER the new one is running.
+	// This avoids a window where the service is completely unannounced,
+	// which would cause remote devices to think we left the network.
+	if oldServer != nil {
+		oldServer.Shutdown()
+	}
 
 	return nil
 }

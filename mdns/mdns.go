@@ -426,33 +426,36 @@ func (m *MdnsManager) attemptResolveMapping() {
 	}
 }
 
-// reannounceWithNewInterfaces re-announces the service with the updated interface list
+// reannounceWithNewInterfaces re-announces the service with the updated interface list.
+//
+// This function intentionally does NOT call UnannounceMdnsEntry() before re-announcing.
+// The providers handle the transition internally by creating the new announcement before
+// tearing down the old one (create-then-swap). This avoids sending mDNS goodbye packets
+// that would cause remote devices to believe this service has left the network, which
+// could break existing EEBUS/SHIP connections on interfaces that are still operational.
 func (m *MdnsManager) reannounceWithNewInterfaces() {
-	m.muxAnnounced.Lock()
-	wasAnnounced := m.isAnnounced
-	m.muxAnnounced.Unlock()
+	wasAnnounced := m.isServiceAnnounced()
 
-	// If we weren't announced (because no interfaces were available at start),
-	// this is actually our FIRST announcement, not a re-announcement
 	if !wasAnnounced {
 		logging.Log().Info("mdns: making first announcement now that interfaces are available")
-		// Don't call Unannounce since we were never announced
-	} else {
-		// Unannounce current service before re-announcing
-		m.UnannounceMdnsEntry()
 	}
 
 	// Re-resolve interfaces (will pick up newly available ones)
 	ifaces, ifaceIndexes, err := m.resolveInterfaces()
 	if err != nil || (ifaces == nil && ifaceIndexes == nil) {
 		logging.Log().Debug("mdns: still no interfaces available during refresh")
+		// If we were announced but now have no usable interfaces, unannounce
+		if wasAnnounced {
+			m.UnannounceMdnsEntry()
+		}
 		return
 	}
 
 	// Update provider with new interface list
 	m.updateProviderInterfaces(ifaces, ifaceIndexes)
 
-	// Announce (or re-announce)
+	// Announce (or re-announce). The providers handle the transition seamlessly
+	// by creating the new server/entry group before shutting down the old one.
 	if err := m.AnnounceMdnsEntry(); err != nil {
 		logging.Log().Debug("mdns: announcement failed:", err)
 		return

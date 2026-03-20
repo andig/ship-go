@@ -229,7 +229,15 @@ func (a *AvahiProvider) Announce(serviceName string, port int, txt []string) err
 		return err
 	}
 
+	// Free the old entry group AFTER the new one is committed.
+	// This avoids a window where the service is completely unannounced,
+	// which would cause remote devices to think we left the network.
+	oldEntryGroup := a.avEntryGroup
 	a.avEntryGroup = entryGroup
+
+	if oldEntryGroup != nil {
+		a.avServer.EntryGroupFree(oldEntryGroup)
+	}
 
 	return nil
 }

@@ -1182,6 +1182,7 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces() {
 		"shipid", "serviceName",
 		4729, []string{"nonexistent_iface"}, MdnsProviderSelectionAll)
 	s.sut.SetTestProvider(s.mdnsProvider)
+	s.sut.mdnsProvider = s.mdnsProvider
 
 	// Set state: was announced before, and all interfaces are missing
 	s.sut.isAnnounced = true
@@ -1193,15 +1194,11 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces() {
 	// Call reannounceWithNewInterfaces - should handle no interfaces gracefully
 	s.sut.reannounceWithNewInterfaces()
 
-	// When no interfaces are available:
-	// 1. If was announced: calls UnannounceMdnsEntry() -> sets isAnnounced=false
-	// 2. Then interfaces() returns nil
-	// 3. Returns early without re-announcing
-	// So isAnnounced should be false
-	//
-	// However, the actual behavior depends on whether UnannounceMdnsEntry succeeds.
-	// Since we're using a mock provider, let's just verify the function doesn't crash
-	// and handles the nil interface case gracefully by returning early.
+	// When no interfaces are available and we were previously announced:
+	// 1. resolveInterfaces() returns nil, nil, nil
+	// 2. UnannounceMdnsEntry() is called to clean up since we have no usable interfaces
+	// 3. isAnnounced is set to false
+	assert.False(s.T(), s.sut.isAnnounced)
 }
 
 func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
