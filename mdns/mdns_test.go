@@ -2,6 +2,7 @@ package mdns
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -1238,4 +1239,77 @@ func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
 	// Verify cleanup - ticker should have been stopped via defer
 	// We can't directly check if ticker.Stop() was called, but we can verify
 	// the goroutine exited without panic (defer cleanup executed successfully)
+func (s *MdnsSuite) Test_AutoAcceptServiceUnannouncedYet() {
+	s.sut.mdnsProvider = s.sut.testProvider
+
+	// nothing has been announced yet
+	s.sut.isAnnounced = false
+
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept)
+
+	s.sut.SetAutoAccept(false)
+	assert.False(s.T(), s.sut.autoaccept)
+
+	assert.False(s.T(), s.sut.isAnnounced)
+
+	// no unnancounce and no announce expected
+	s.mdnsProvider.AssertNotCalled(s.T(), "Unannounce")
+	s.mdnsProvider.AssertNotCalled(s.T(), "Announce", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *MdnsSuite) Test_AutoAcceptMdnsProviderNil() {
+	s.sut.mdnsProvider = nil
+
+	// something has already been announced
+	s.sut.isAnnounced = true
+
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept)
+
+	s.sut.SetAutoAccept(false)
+	assert.False(s.T(), s.sut.autoaccept)
+
+	assert.True(s.T(), s.sut.isAnnounced)
+
+	// no unnancounce and no announce expected
+	s.mdnsProvider.AssertNotCalled(s.T(), "Unannounce")
+	s.mdnsProvider.AssertNotCalled(s.T(), "Announce", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *MdnsSuite) Test_AutoAcceptServiceAlreadyAnnounced() {
+	mdnsProvider := mocks.NewMdnsProviderInterface(s.T())
+	s.sut.mdnsProvider = mdnsProvider
+
+	// something has already been announced
+	s.sut.isAnnounced = true
+
+	mdnsProvider.EXPECT().Unannounce()
+	mdnsProvider.EXPECT().Announce(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept)
+
+	mdnsProvider.EXPECT().Unannounce()
+	mdnsProvider.EXPECT().Announce(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.sut.SetAutoAccept(false)
+	assert.False(s.T(), s.sut.autoaccept)
+
+	assert.True(s.T(), s.sut.isAnnounced)
+	mdnsProvider.EXPECT().Shutdown()
+}
+
+func (s *MdnsSuite) Test_AutoAcceptMdnsProviderReannounceFails() {
+	mdnsProvider := mocks.NewMdnsProviderInterface(s.T())
+	s.sut.mdnsProvider = mdnsProvider
+
+	// something has already been announced
+	s.sut.isAnnounced = true
+
+	mdnsProvider.EXPECT().Unannounce()
+	mdnsProvider.EXPECT().Announce(mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("myError"))
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept)
+	assert.False(s.T(), s.sut.isAnnounced)
+
+	mdnsProvider.EXPECT().Shutdown()
 }
