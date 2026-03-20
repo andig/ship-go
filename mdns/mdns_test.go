@@ -18,6 +18,30 @@ func TestMdnsSuite(t *testing.T) {
 	suite.Run(t, new(MdnsSuite))
 }
 
+// findUsableInterfaceName returns the name of a network interface that is UP,
+// not loopback, and has at least one address. Skips the test if none is found
+// or if running on CI where interface names are not accessible.
+func findUsableInterfaceName(t *testing.T) string {
+	t.Helper()
+	if util.IsRunningOnCI() {
+		t.Skip("no access to interface names on CI")
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Skipf("cannot list interfaces: %v", err)
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
+			addrs, _ := iface.Addrs()
+			if len(addrs) > 0 {
+				return iface.Name
+			}
+		}
+	}
+	t.Skip("no usable network interface found on this system")
+	return ""
+}
+
 type MdnsSuite struct {
 	suite.Suite
 
@@ -846,72 +870,24 @@ func (s *MdnsSuite) Test_Shutdown_DefensiveProgramming() {
 }
 
 func (s *MdnsSuite) Test_getUsableInterface() {
-	// we don't have access to iface names on CI
-	if util.IsRunningOnCI() {
-		return
-	}
+	usableIfaceName := findUsableInterfaceName(s.T())
 
 	// Test with valid interface
-	ifaces, err := net.Interfaces()
-	assert.Nil(s.T(), err)
-	assert.NotEqual(s.T(), 0, len(ifaces))
-
-	// Find a usable interface (UP, not loopback, has addresses)
-	var usableIfaceName string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp != 0 &&
-			iface.Flags&net.FlagLoopback == 0 {
-			addrs, _ := iface.Addrs()
-			if len(addrs) > 0 {
-				usableIfaceName = iface.Name
-				break
-			}
-		}
-	}
-
-	if usableIfaceName != "" {
-		iface, usable := getUsableInterface(usableIfaceName)
-		assert.True(s.T(), usable)
-		assert.NotNil(s.T(), iface)
-		assert.Equal(s.T(), usableIfaceName, iface.Name)
-	}
+	iface, usable := getUsableInterface(usableIfaceName)
+	assert.True(s.T(), usable)
+	assert.NotNil(s.T(), iface)
+	assert.Equal(s.T(), usableIfaceName, iface.Name)
 
 	// Test with invalid interface name
-	iface, usable := getUsableInterface("nonexistent_interface_12345")
+	iface, usable = getUsableInterface("nonexistent_interface_12345")
 	assert.False(s.T(), usable)
 	assert.Nil(s.T(), iface)
 }
 
 func (s *MdnsSuite) Test_Start_PartialInterfaceAvailability() {
-	// we don't have access to iface names on CI
-	if util.IsRunningOnCI() {
-		return
-	}
+	usableIfaceName := findUsableInterfaceName(s.T())
 
 	s.sut.Shutdown()
-
-	// Get a valid interface
-	ifaces, err := net.Interfaces()
-	assert.Nil(s.T(), err)
-	assert.NotEqual(s.T(), 0, len(ifaces))
-
-	// Find a usable interface
-	var usableIfaceName string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp != 0 &&
-			iface.Flags&net.FlagLoopback == 0 {
-			addrs, _ := iface.Addrs()
-			if len(addrs) > 0 {
-				usableIfaceName = iface.Name
-				break
-			}
-		}
-	}
-
-	if usableIfaceName == "" {
-		s.T().Skip("No usable network interface found for testing")
-		return
-	}
 
 	// Mix valid and invalid interfaces
 	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
@@ -922,7 +898,7 @@ func (s *MdnsSuite) Test_Start_PartialInterfaceAvailability() {
 	s.sut.SetTestProvider(s.mdnsProvider)
 
 	// Start should succeed and announce on available interface
-	err = s.sut.Start(s.mdnsSearch)
+	err := s.sut.Start(s.mdnsSearch)
 	assert.Nil(s.T(), err)
 	assert.True(s.T(), s.sut.isAnnounced) // Should announce on partial availability
 
@@ -1055,25 +1031,7 @@ func (s *MdnsSuite) Test_attemptResolveMapping_InterfaceDisappears() {
 }
 
 func (s *MdnsSuite) Test_attemptResolveMapping_InterfaceReappears() {
-	// Find a real usable interface on this system
-	ifaces, err := net.Interfaces()
-	assert.Nil(s.T(), err)
-
-	var usableIfaceName string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp != 0 &&
-			iface.Flags&net.FlagLoopback == 0 {
-			addrs, _ := iface.Addrs()
-			if len(addrs) > 0 {
-				usableIfaceName = iface.Name
-				break
-			}
-		}
-	}
-
-	if usableIfaceName == "" {
-		s.T().Skip("no usable network interface found on this system")
-	}
+	usableIfaceName := findUsableInterfaceName(s.T())
 
 	s.sut.Shutdown()
 
@@ -1119,25 +1077,7 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PreservesTrackerState() {
 }
 
 func (s *MdnsSuite) Test_resolveInterfaces() {
-	// Find a real usable interface on this system
-	ifaces, err := net.Interfaces()
-	assert.Nil(s.T(), err)
-
-	var usableIfaceName string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp != 0 &&
-			iface.Flags&net.FlagLoopback == 0 {
-			addrs, _ := iface.Addrs()
-			if len(addrs) > 0 {
-				usableIfaceName = iface.Name
-				break
-			}
-		}
-	}
-
-	if usableIfaceName == "" {
-		s.T().Skip("no usable network interface found on this system")
-	}
+	usableIfaceName := findUsableInterfaceName(s.T())
 
 	s.sut.Shutdown()
 

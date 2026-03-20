@@ -165,43 +165,36 @@ func NewMDNS(
 
 // Return allowed interfaces for mDNS
 func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
-	var ifaces []net.Interface
-	var ifaceIndexes []int32
-
-	if len(m.ifaces) == 0 {
-		// No specific interfaces configured, use all
-		return nil, []int32{avahi.InterfaceUnspec}, nil
+	ifaces, ifaceIndexes, err := m.resolveInterfaces()
+	if err != nil {
+		return nil, nil, err
 	}
 
-	// Reset trackers on each call to prevent duplicates
+	if len(m.ifaces) == 0 {
+		return ifaces, ifaceIndexes, nil
+	}
+
+	// Reset and rebuild tracking state
 	m.missingIfaces = make(map[string]struct{})
 	m.currentIfaces = make([]string, 0, len(m.ifaces))
 
-	// Try to resolve each interface - DON'T FAIL if some missing
+	resolvedSet := make(map[string]struct{}, len(ifaces))
+	for _, iface := range ifaces {
+		resolvedSet[iface.Name] = struct{}{}
+		m.currentIfaces = append(m.currentIfaces, iface.Name)
+	}
+
 	for _, ifaceName := range m.ifaces {
-		iface, usable := getUsableInterface(ifaceName)
-		if !usable {
-			// Track as missing, but continue
+		if _, ok := resolvedSet[ifaceName]; !ok {
 			m.missingIfaces[ifaceName] = struct{}{}
 			logging.Log().Debugf("mdns: interface %s not available or not usable", ifaceName)
-			continue
 		}
-
-		// Successfully resolved
-		delete(m.missingIfaces, ifaceName)
-		m.currentIfaces = append(m.currentIfaces, ifaceName) // Track current
-		ifaces = append(ifaces, *iface)
-		// conversion is safe, as the index is always positive and not higher than int32
-		ifaceIndexes = append(ifaceIndexes, int32(iface.Index)) // #nosec G115
 	}
 
-	// If NO interfaces resolved, indicate no interfaces available (don't announce)
 	if len(ifaces) == 0 {
 		logging.Log().Infof("mdns: none of the %d required interfaces are available, will retry", len(m.ifaces))
-		return nil, nil, nil
 	}
 
-	logging.Log().Infof("mdns: using %d of %d required interfaces", len(ifaces), len(m.ifaces))
 	return ifaces, ifaceIndexes, nil
 }
 
