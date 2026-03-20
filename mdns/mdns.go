@@ -205,6 +205,34 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 	return ifaces, ifaceIndexes, nil
 }
 
+// resolveInterfaces returns currently usable interfaces without modifying
+// tracking state (currentIfaces/missingIfaces). Used by reannounceWithNewInterfaces
+// to avoid resetting the change-detection trackers managed by attemptResolveMapping.
+func (m *MdnsManager) resolveInterfaces() ([]net.Interface, []int32, error) {
+	if len(m.ifaces) == 0 {
+		return nil, []int32{avahi.InterfaceUnspec}, nil
+	}
+
+	var ifaces []net.Interface
+	var ifaceIndexes []int32
+
+	for _, ifaceName := range m.ifaces {
+		iface, usable := getUsableInterface(ifaceName)
+		if !usable {
+			continue
+		}
+		ifaces = append(ifaces, *iface)
+		ifaceIndexes = append(ifaceIndexes, int32(iface.Index)) // #nosec G115
+	}
+
+	if len(ifaces) == 0 {
+		return nil, nil, nil
+	}
+
+	logging.Log().Infof("mdns: using %d of %d required interfaces", len(ifaces), len(m.ifaces))
+	return ifaces, ifaceIndexes, nil
+}
+
 // isInterfaceUsable checks if a network interface is usable for mDNS
 func isInterfaceUsable(iface *net.Interface) bool {
 	// Must be UP
@@ -422,7 +450,7 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 	}
 
 	// Re-resolve interfaces (will pick up newly available ones)
-	ifaces, ifaceIndexes, err := m.interfaces()
+	ifaces, ifaceIndexes, err := m.resolveInterfaces()
 	if err != nil || (ifaces == nil && ifaceIndexes == nil) {
 		logging.Log().Debug("mdns: still no interfaces available during refresh")
 		return

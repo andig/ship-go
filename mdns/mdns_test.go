@@ -1054,6 +1054,117 @@ func (s *MdnsSuite) Test_attemptResolveMapping_InterfaceDisappears() {
 	// We verify state changes rather than mock expectations.
 }
 
+func (s *MdnsSuite) Test_attemptResolveMapping_InterfaceReappears() {
+	// Find a real usable interface on this system
+	ifaces, err := net.Interfaces()
+	assert.Nil(s.T(), err)
+
+	var usableIfaceName string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 &&
+			iface.Flags&net.FlagLoopback == 0 {
+			addrs, _ := iface.Addrs()
+			if len(addrs) > 0 {
+				usableIfaceName = iface.Name
+				break
+			}
+		}
+	}
+
+	if usableIfaceName == "" {
+		s.T().Skip("no usable network interface found on this system")
+	}
+
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{usableIfaceName}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set initial state: interface is missing (was previously unavailable)
+	s.sut.missingIfaces = map[string]struct{}{usableIfaceName: {}}
+	s.sut.currentIfaces = []string{}
+
+	// Call attemptResolveMapping - interface should be detected as reappeared
+	s.sut.attemptResolveMapping()
+
+	// Verify interface moved from missing to current
+	assert.NotContains(s.T(), s.sut.missingIfaces, usableIfaceName)
+	assert.Contains(s.T(), s.sut.currentIfaces, usableIfaceName)
+}
+
+func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PreservesTrackerState() {
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"fake_iface_1", "fake_iface_2"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set tracker state
+	s.sut.missingIfaces = map[string]struct{}{"fake_iface_1": {}}
+	s.sut.currentIfaces = []string{"fake_iface_2"}
+	s.sut.isAnnounced = true
+
+	// Call reannounceWithNewInterfaces
+	s.sut.reannounceWithNewInterfaces()
+
+	// Verify tracker state was NOT reset by the call
+	assert.Contains(s.T(), s.sut.missingIfaces, "fake_iface_1")
+}
+
+func (s *MdnsSuite) Test_resolveInterfaces() {
+	// Find a real usable interface on this system
+	ifaces, err := net.Interfaces()
+	assert.Nil(s.T(), err)
+
+	var usableIfaceName string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 &&
+			iface.Flags&net.FlagLoopback == 0 {
+			addrs, _ := iface.Addrs()
+			if len(addrs) > 0 {
+				usableIfaceName = iface.Name
+				break
+			}
+		}
+	}
+
+	if usableIfaceName == "" {
+		s.T().Skip("no usable network interface found on this system")
+	}
+
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{usableIfaceName}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Set initial tracker state
+	s.sut.missingIfaces = map[string]struct{}{"some_missing": {}}
+	s.sut.currentIfaces = []string{"some_current"}
+
+	// Call resolveInterfaces
+	resolvedIfaces, ifaceIndexes, resolveErr := s.sut.resolveInterfaces()
+	assert.Nil(s.T(), resolveErr)
+	assert.NotNil(s.T(), resolvedIfaces)
+	assert.NotNil(s.T(), ifaceIndexes)
+	assert.Equal(s.T(), 1, len(resolvedIfaces))
+	assert.Equal(s.T(), usableIfaceName, resolvedIfaces[0].Name)
+
+	// Verify tracker state was NOT modified
+	assert.Contains(s.T(), s.sut.missingIfaces, "some_missing")
+	assert.Equal(s.T(), []string{"some_current"}, s.sut.currentIfaces)
+}
+
 func (s *MdnsSuite) Test_updateProviderInterfaces() {
 	// Test with nil provider
 	s.sut.Shutdown()
