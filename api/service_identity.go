@@ -106,6 +106,16 @@ func (s ServiceIdentity) String() string {
 		parts = append(parts, fmt.Sprintf("Fingerprint:%s", s.Fingerprint[:8]+"...")) // Truncate for readability
 	}
 
+	pairingTypeString := "N/A"
+	switch s.PairingType {
+	case PairingTypeDefault:
+		pairingTypeString = "default"
+	case PairingTypeAddCu:
+		pairingTypeString = "addCu"
+	}
+
+	parts = append(parts, fmt.Sprintf("PairingType:%s", pairingTypeString))
+
 	if len(parts) == 0 {
 		return "ServiceIdentity{empty}"
 	}

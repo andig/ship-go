@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/enbility/ship-go/api"
+	"github.com/enbility/ship-go/util"
 ) // #nosec G505
 
 // SHIP 9.1: the ciphers are reported insecure but are defined to be used by SHIP
@@ -130,4 +131,20 @@ func skiFromECDSAKey(ecdsaKey *ecdsa.PublicKey) (string, error) {
 	ski := sha1.Sum(ecdhKey.Bytes())
 
 	return string(ski[:]), nil
+}
+
+func IsSkiFormatValid(ski string) bool {
+	ski = util.NormalizeSKI(ski)
+	// Validate hex format (40 characters)
+	if len(ski) != 40 {
+		return false
+	}
+
+	// Check for valid hex characters
+	for _, char := range ski {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }

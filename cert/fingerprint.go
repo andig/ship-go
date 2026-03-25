@@ -38,15 +38,8 @@ func ValidateFingerprint(cert *x509.Certificate, expectedFingerprint string) err
 	}
 
 	// Validate hex format (64 characters, uppercase)
-	if len(expectedFingerprint) != 64 {
+	if !IsFingerprintFormatValid(expectedFingerprint) {
 		return api.ErrInvalidTargetFingerprint
-	}
-
-	// Check for valid hex characters (uppercase only per SHIP spec)
-	for _, char := range expectedFingerprint {
-		if (char < '0' || char > '9') && (char < 'A' || char > 'F') {
-			return api.ErrInvalidTargetFingerprint
-		}
 	}
 
 	// Calculate actual fingerprint
@@ -61,4 +54,19 @@ func ValidateFingerprint(cert *x509.Certificate, expectedFingerprint string) err
 	}
 
 	return nil
+}
+
+func IsFingerprintFormatValid(fingerprint string) bool {
+	// Validate hex format (64 characters, uppercase)
+	if len(fingerprint) != 64 {
+		return false
+	}
+
+	// Check for valid hex characters (uppercase only per SHIP spec)
+	for _, char := range fingerprint {
+		if (char < '0' || char > '9') && (char < 'A' || char > 'F') {
+			return false
+		}
+	}
+	return true
 }

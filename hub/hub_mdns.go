@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/enbility/ship-go/api"
+	"github.com/enbility/ship-go/cert"
 	"github.com/enbility/ship-go/logging"
 )
 
@@ -21,6 +22,10 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 	for _, entry := range entries {
 		mdnsEntries = append(mdnsEntries, entry)
 
+		if !cert.IsSkiFormatValid(entry.Ski) {
+			continue
+		}
+
 		// check if this ski is already connected
 		if h.isSkiConnected(entry.Ski) {
 			continue
@@ -28,12 +33,34 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 
 		// Check if the remote service is paired or queued for connection
 		service := h.ServiceForIdentifier(entry.Ski, "")
-		if service == nil {
-			continue
-		}
+		if service != nil {
+			if !h.IsRemoteServiceForSKIPaired(entry.Ski) && service.Trusted() {
+				continue
+			}
+		} else {
+			// devA via SHIP Pairing does not know the SKI at this point,
+			// but has the fingerprint and SHIP ID. The fingerprint is not announced via mDNS!
 
-		if !h.IsRemoteServiceForSKIPaired(entry.Ski) && service.Trusted() {
-			continue
+			// Make sure SHIP ID is not empty
+			if len(entry.Identifier) == 0 {
+				continue
+			}
+
+			service = h.serviceForTrustedShipID(entry.Identifier)
+			if service == nil {
+				continue
+			}
+			// Make sure SKI is not present, to match our criteiron
+			if len(service.SKI()) != 0 {
+				continue
+			}
+			// Fingerprint format validation
+			if !cert.IsFingerprintFormatValid(service.Fingerprint()) {
+				continue
+			}
+			// Fingerprint is valid, add the found SKI in our trust,
+			// given that the fingerprint will be validated on handshake process
+			service.SetSKI(entry.Ski)
 		}
 
 		service.SetAutoAccept(entry.Register)

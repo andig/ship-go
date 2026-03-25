@@ -177,7 +177,7 @@ func TestReportMdnsEntries_WithTrustedServiceAndIPv4(t *testing.T) {
 		mdns:                     mockMdns,
 	}
 
-	ski := "SKI1"
+	ski := "0123456789abcdef0123456789abcdefffffffff"
 	service := api.NewServiceDetails(ski, "", "")
 	service.SetTrusted(true)                                            // Paired
 	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
@@ -210,6 +210,167 @@ func TestReportMdnsEntries_WithTrustedServiceAndIPv4(t *testing.T) {
 	// Verify that auto-accept was set
 	if service.AutoAccept() != false {
 		t.Errorf("Expected auto-accept to be set to false, got %t", service.AutoAccept())
+	}
+
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_ShipIDCheck_Valid(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	// Set up mock to expect AnnounceMdnsEntry call when checkAutoReannounce is triggered
+	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
+	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
+
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	// Step 1
+	ski := "0123456789abcdef0123456789abcdefffffffff"
+	shipId := "ID1"
+	fingerprint := "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service := api.NewServiceDetails("", fingerprint, shipId)
+	service.SetTrusted(true)                                            // Paired
+	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
+	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued) // Queued for connection
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	originalIP := net.ParseIP("192.168.1.2")
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now that it has the SKI
+	if service.SKI() != ski {
+		t.Errorf("Expected ski %s trusted and amended to the trust.. Got %s", ski, service.SKI())
+	}
+
+	// Step 2: try again with existing SKI but mDNS reports a different value
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	ski2 := "0123456789abcdef0123456789abcde000000000"
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski2,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service did not look for our SHIP ID and overwritten our previous SKI
+	if service.SKI() != ski || service.SKI() == ski2 {
+		t.Errorf("Expected ski not to be overwritten to the trust..")
+	}
+
+	// Step 3: invalidate SKI check
+	service.SetSKI("")
+	ski = "SKI1"
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 4: invalidate/no Fingerprint check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	fingerprint = "fp"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 5: no Ship ID check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	shipId = ""
+	service.SetShipID(shipId)
+	fingerprint = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 6: another Ship ID in mDNS check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	shipId = "ID1"
+	shipId2 := "ID2"
+	service.SetShipID(shipId)
+	fingerprint = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId2,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
 	}
 
 	mockHubReader.AssertExpectations(t)
