@@ -763,6 +763,25 @@ func (s *MdnsSuite) Test_AnnounceMdnsEntry_NoProvider() {
 	assert.Equal(s.T(), "cannot announce mDNS entry: no provider available (selection: 0)", err.Error())
 }
 
+func (s *MdnsSuite) Test_UnannounceMdnsEntry_InvalidInstanceID() {
+	err := s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
+	assert.Nil(s.T(), err)
+
+	assert.Equal(s.T(), true, s.sut.isAnnounced)
+	assert.NotEmpty(s.T(), s.sut.instanceID)
+
+	instanceId := s.sut.instanceID
+	s.sut.instanceID = "nonexistent-instanceid"
+
+	s.sut.UnannounceMdnsEntry()
+	assert.Equal(s.T(), true, s.sut.isAnnounced)
+
+	s.sut.instanceID = instanceId
+
+	s.sut.UnannounceMdnsEntry()
+	assert.Equal(s.T(), false, s.sut.isAnnounced)
+}
+
 func (s *MdnsSuite) Test_Shutdown_DefensiveProgramming() {
 	// Test that shutdown is defensive against panics and completes gracefully
 	validProvider := mocks.NewMdnsProviderInterface(s.T())

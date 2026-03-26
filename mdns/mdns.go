@@ -107,6 +107,9 @@ type MdnsManager struct {
 	// Track if the manager has been started to prevent redundant operations
 	isStarted bool
 
+	// Unique instance ID retrieved from the ship service announcement
+	instanceID string
+
 	// Signal handler management - DISABLED
 	// Libraries should not register signal handlers - that's the application's responsibility
 	// signalHandler    chan os.Signal
@@ -385,11 +388,12 @@ func (m *MdnsManager) AnnounceMdnsEntry() error {
 
 	serviceName := m.serviceName
 
-	_, err := m.mdnsProvider.AnnounceService(shipZeroConfServiceType, serviceName, m.port, txt)
+	instanceID, err := m.mdnsProvider.AnnounceService(shipZeroConfServiceType, serviceName, m.port, txt)
 	if err != nil {
 		logging.Log().Debug("mdns: failure announcing service", err)
 		return err
 	}
+	m.instanceID = instanceID
 
 	m.setIsServiceAnnounce(true)
 
@@ -407,7 +411,10 @@ func (m *MdnsManager) UnannounceMdnsEntry() {
 	}
 
 	logging.Log().Debug("mdns: stop announcement")
-	_ = m.mdnsProvider.UnannounceService(shipZeroConfServiceType)
+	if err := m.mdnsProvider.UnannounceService(m.instanceID); err != nil {
+		logging.Log().Debug("mdns: stop announcement failed: %v", err.Error())
+		return
+	}
 
 	m.setIsServiceAnnounce(false)
 }
