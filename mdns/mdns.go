@@ -229,7 +229,6 @@ func (m *MdnsManager) resolveInterfaces() ([]net.Interface, []int32, error) {
 		return nil, nil, ErrNoInterfacesAvailable
 	}
 
-	logging.Log().Infof("mdns: using %d of %d required interfaces", len(ifaces), len(m.ifaces))
 	return ifaces, ifaceIndexes, nil
 }
 
