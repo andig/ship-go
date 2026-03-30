@@ -1234,7 +1234,7 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces() {
 	s.sut.reannounceWithNewInterfaces()
 
 	// When no interfaces are available and we were previously announced:
-	// 1. resolveInterfaces() returns nil, nil, nil
+	// 1. resolveInterfaces() returns ErrNoInterfacesAvailable
 	// 2. UnannounceMdnsEntry() is called to clean up since we have no usable interfaces
 	// 3. isAnnounced is set to false
 	assert.False(s.T(), s.sut.isAnnounced)

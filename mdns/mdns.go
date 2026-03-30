@@ -1,6 +1,7 @@
 package mdns
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,8 @@ import (
 	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/util"
 )
+
+var ErrNoInterfacesAvailable = errors.New("none of the configured interfaces are available")
 
 const shipWebsocketPath = "/ship/"
 
@@ -166,7 +169,7 @@ func NewMDNS(
 // Return allowed interfaces for mDNS
 func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 	ifaces, ifaceIndexes, err := m.resolveInterfaces()
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNoInterfacesAvailable) {
 		return nil, nil, err
 	}
 
@@ -194,8 +197,9 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 	}
 	m.refreshMux.Unlock()
 
-	if len(ifaces) == 0 {
+	if errors.Is(err, ErrNoInterfacesAvailable) {
 		logging.Log().Infof("mdns: none of the %d required interfaces are available, will retry", len(m.ifaces))
+		return nil, nil, ErrNoInterfacesAvailable
 	}
 
 	return ifaces, ifaceIndexes, nil
@@ -222,7 +226,7 @@ func (m *MdnsManager) resolveInterfaces() ([]net.Interface, []int32, error) {
 	}
 
 	if len(ifaces) == 0 {
-		return nil, nil, nil
+		return nil, nil, ErrNoInterfacesAvailable
 	}
 
 	logging.Log().Infof("mdns: using %d of %d required interfaces", len(ifaces), len(m.ifaces))
@@ -266,7 +270,7 @@ var _ api.MdnsInterface = (*MdnsManager)(nil)
 
 func (m *MdnsManager) Start(cb api.MdnsReportInterface) error {
 	ifaces, ifaceIndexes, err := m.interfaces()
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNoInterfacesAvailable) {
 		return err
 	}
 
@@ -445,12 +449,16 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 
 	// Re-resolve interfaces (will pick up newly available ones)
 	ifaces, ifaceIndexes, err := m.resolveInterfaces()
-	if err != nil || (ifaces == nil && ifaceIndexes == nil) {
-		logging.Log().Debug("mdns: still no interfaces available during refresh")
-		// If we were announced but now have no usable interfaces, unannounce
-		if wasAnnounced {
-			m.UnannounceMdnsEntry()
+	if err != nil {
+		if errors.Is(err, ErrNoInterfacesAvailable) {
+			logging.Log().Debug("mdns: still no interfaces available during refresh")
+			if wasAnnounced {
+				m.UnannounceMdnsEntry()
+			}
+			return
 		}
+		// handle unexpected errors
+		logging.Log().Debugf("mdns: error resolving interfaces during refresh: %s", err)
 		return
 	}
 
