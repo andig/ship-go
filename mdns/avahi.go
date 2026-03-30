@@ -194,14 +194,6 @@ func (a *AvahiProvider) Shutdown() {
 
 func (a *AvahiProvider) Announce(serviceName string, port int, txt []string) error {
 	a.mux.Lock()
-	defer a.mux.Unlock()
-
-	// store the data for reconnection
-	a.mdnsServiceData = &mdnsServiceData{
-		Name: serviceName,
-		Port: port,
-		Txt:  txt,
-	}
 
 	logging.Log().Debug("mdns: using avahi")
 
@@ -210,30 +202,49 @@ func (a *AvahiProvider) Announce(serviceName string, port int, txt []string) err
 		btxt = append(btxt, []byte(t))
 	}
 
-	entryGroup, err := a.avServer.EntryGroupNew()
+	newEntryGroup, err := a.avServer.EntryGroupNew()
 	if err != nil {
+		a.mux.Unlock()
 		return err
 	}
 
 	// We already hold a.mux lock, so access ifaceIndexes directly
 	for _, iface := range a.ifaceIndexes {
 		// conversion is safe, as port values are always positive
-		err = entryGroup.AddService(iface, avahi.ProtoUnspec, 0, serviceName, shipZeroConfServiceType, shipZeroConfDomain, "", uint16(port), btxt) // #nosec G115
+		err = newEntryGroup.AddService(iface, avahi.ProtoUnspec, 0, serviceName, shipZeroConfServiceType, shipZeroConfDomain, "", uint16(port), btxt) // #nosec G115
 		if err != nil {
+			a.mux.Unlock()
+			a.avServer.EntryGroupFree(newEntryGroup)
 			return err
 		}
 	}
 
-	err = entryGroup.Commit()
+	err = newEntryGroup.Commit()
 	if err != nil {
+		a.mux.Unlock()
+		a.avServer.EntryGroupFree(newEntryGroup)
 		return err
+	}
+
+	// Only store the data for reconnection after a successful commit,
+	// so avahiCallback never re-announces with parameters that were
+	// never successfully committed.
+	a.mdnsServiceData = &mdnsServiceData{
+		Name: serviceName,
+		Port: port,
+		Txt:  txt,
 	}
 
 	// Free the old entry group AFTER the new one is committed.
 	// This avoids a window where the service is completely unannounced,
 	// which would cause remote devices to think we left the network.
 	oldEntryGroup := a.avEntryGroup
-	a.avEntryGroup = entryGroup
+	a.avEntryGroup = newEntryGroup
+
+	// Release the lock before freeing the old entry group, as
+	// EntryGroupFree may block on dBUS and we don't want to hold
+	// the mutex during that time.
+	a.mux.Unlock()
 
 	if oldEntryGroup != nil {
 		a.avServer.EntryGroupFree(oldEntryGroup)
@@ -244,17 +255,20 @@ func (a *AvahiProvider) Announce(serviceName string, port int, txt []string) err
 
 func (a *AvahiProvider) Unannounce() {
 	a.mux.Lock()
-	defer a.mux.Unlock()
 
 	// clean up the reconnection data
 	a.mdnsServiceData = nil
 
-	if a.avEntryGroup == nil {
-		return
-	}
-
-	a.avServer.EntryGroupFree(a.avEntryGroup)
+	entryGroup := a.avEntryGroup
 	a.avEntryGroup = nil
+
+	// Release the lock before freeing the entry group, as
+	// EntryGroupFree may block on dBUS.
+	a.mux.Unlock()
+
+	if entryGroup != nil {
+		a.avServer.EntryGroupFree(entryGroup)
+	}
 }
 
 func (a *AvahiProvider) avahiCallback(event avahi.Event) {
