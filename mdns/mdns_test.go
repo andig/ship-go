@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -970,6 +971,43 @@ func (s *MdnsSuite) Test_interfaces_ResetsPreviousState() {
 	_, _, _ = s.sut.interfaces()
 	assert.Equal(s.T(), 2, len(s.sut.missingIfaces))
 	assert.Equal(s.T(), 0, len(s.sut.currentIfaces))
+}
+
+func (s *MdnsSuite) Test_interfaces_ConcurrentWithAttemptResolveMapping() {
+	// Test that interfaces() and attemptResolveMapping() can run concurrently
+	// without data races on missingIfaces and currentIfaces.
+	// This test validates the refreshMux protection added in interfaces().
+	// It should be run with -race to detect unsynchronized access.
+	s.sut.Shutdown()
+
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"fake_iface_1", "fake_iface_2"}, MdnsProviderSelectionAll)
+	s.sut.SetTestProvider(s.mdnsProvider)
+
+	// Initialize tracking state so attemptResolveMapping has something to work with
+	_, _, _ = s.sut.interfaces()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			s.sut.interfaces()
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			s.sut.attemptResolveMapping()
+		}
+	}()
+
+	wg.Wait()
 }
 
 func (s *MdnsSuite) Test_attemptResolveMapping_NoChanges() {
