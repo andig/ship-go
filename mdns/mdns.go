@@ -174,7 +174,9 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 		return ifaces, ifaceIndexes, nil
 	}
 
-	// Reset and rebuild tracking state
+	// Reset and rebuild tracking state (protected by refreshMux since
+	// these fields are also read/written by attemptResolveMapping)
+	m.refreshMux.Lock()
 	m.missingIfaces = make(map[string]struct{})
 	m.currentIfaces = make([]string, 0, len(m.ifaces))
 
@@ -190,6 +192,7 @@ func (m *MdnsManager) interfaces() ([]net.Interface, []int32, error) {
 			logging.Log().Debugf("mdns: interface %s not available or not usable", ifaceName)
 		}
 	}
+	m.refreshMux.Unlock()
 
 	if len(ifaces) == 0 {
 		logging.Log().Infof("mdns: none of the %d required interfaces are available, will retry", len(m.ifaces))
