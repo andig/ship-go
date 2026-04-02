@@ -184,6 +184,19 @@ func (s *HubConnectionsServerSuite) Test_ServeHTTP_02() {
 	time.Sleep(time.Second)
 }
 
+// Test that TLS session resumption is disabled on the server (SHIP issue #71).
+// Session tickets must be disabled to prevent resumed TLS sessions from
+// bypassing the VerifyPeerCertificate callback after trust has been removed.
+func (s *HubConnectionsServerSuite) Test_TLSSessionResumptionDisabled() {
+	err := s.sut.startWebsocketServer()
+	assert.Nil(s.T(), err)
+
+	tlsConfig := s.sut.httpServer.TLSConfig
+	assert.NotNil(s.T(), tlsConfig)
+	assert.True(s.T(), tlsConfig.SessionTicketsDisabled,
+		"TLS session tickets must be disabled to prevent bypassing certificate verification on resumed sessions")
+}
+
 func (s *HubConnectionsServerSuite) Test_VerifyPeerCertificate() {
 	testCert, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 	var rawCerts [][]byte
