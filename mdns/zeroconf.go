@@ -236,7 +236,12 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 				continue
 			}
 
-			elements := parseTxt(service.Text)
+			elements, uniqueKeys := parseTxt(service.Text)
+
+			if !uniqueKeys {
+				logging.Log().Errorf("duplicate keys in txt record: %v", service.Text)
+				continue
+			}
 
 			addresses := service.AddrIPv4
 			cb(elements, service.Instance, service.HostName, service.Service, addresses, service.Port, true)
@@ -247,7 +252,12 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 				continue
 			}
 
-			elements := parseTxt(service.Text)
+			elements, uniqueKeys := parseTxt(service.Text)
+
+			if !uniqueKeys {
+				logging.Log().Errorf("duplicate keys in txt record: %v", service.Text)
+				continue
+			}
 
 			addresses := service.AddrIPv4
 			addresses = append(addresses, service.AddrIPv6...)
@@ -259,7 +269,13 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 				continue
 			}
 
-			elements := parseTxt(service.Text)
+			elements, uniqueKeys := parseTxt(service.Text)
+
+			if !uniqueKeys {
+				logging.Log().Errorf("duplicate keys in txt record: %v", service.Text)
+				continue
+			}
+
 			addresses := service.AddrIPv4
 			// Pass _shippairing._tcp as service type to ensure proper routing
 			cb(elements, service.Instance, service.HostName, shipPairingZeroConfServiceType, addresses, service.Port, true)
@@ -270,7 +286,13 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 				continue
 			}
 
-			elements := parseTxt(service.Text)
+			elements, uniqueKeys := parseTxt(service.Text)
+
+			if !uniqueKeys {
+				logging.Log().Errorf("duplicate keys in txt record: %v", service.Text)
+				continue
+			}
+
 			addresses := service.AddrIPv4
 			addresses = append(addresses, service.AddrIPv6...)
 			// Pass _shippairing._tcp as service type to ensure proper routing

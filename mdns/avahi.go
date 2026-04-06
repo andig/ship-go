@@ -419,7 +419,10 @@ func (a *AvahiProvider) processAddedService(service avahi.Service, cb api.MdnsRe
 	for _, element := range service.Txt {
 		txt = append(txt, string(element))
 	}
-	elements := parseTxt(txt)
+	elements, uniqueKeys := parseTxt(txt)
+	if !uniqueKeys {
+		return fmt.Errorf("duplicate keys in txt record: %v", txt)
+	}
 
 	logging.Log().Trace("mdns: avahi - process add service:", service.Name, service.Type, service.Domain, service.Host, service.Address, service.Port, elements)
 
