@@ -71,9 +71,9 @@ type AvahiProvider struct {
 
 func NewAvahiProvider(ifaceIndexes []int32) *AvahiProvider {
 	return &AvahiProvider{
-		avServer:         avahi.ServerNew(),
-		setupSuccessful:  false,
-		ifaceIndexes:     ifaceIndexes,
+		avServer:            avahi.ServerNew(),
+		setupSuccessful:     false,
+		ifaceIndexes:        ifaceIndexes,
 		serviceElements:     make(map[string]map[string]string),
 		instanceEntryGroups: make(map[string]avahi.EntryGroupInterface), // One per instance
 		instanceStates:      make(map[string]*mdnsServiceData),          // One per instance
@@ -337,7 +337,7 @@ func (a *AvahiProvider) attemptReconnect(cb api.MdnsResolveCB, serviceData *mdns
 					}
 				}
 			}
-			
+
 			if !alreadyRestored {
 				if _, err := a.AnnounceService(shipZeroConfServiceType, serviceData.Name, serviceData.Port, serviceData.Txt); err != nil {
 					logging.Log().Debug("mdns: avahi - error re-announcing legacy service:", err)

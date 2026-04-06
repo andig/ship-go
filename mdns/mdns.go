@@ -100,8 +100,6 @@ type MdnsManager struct {
 	// providerFactory creates provider instances, can be overridden for testing
 	providerFactory *ProviderFactory
 
-	shutdownOnce sync.Once
-
 	providerSelection MdnsProviderSelection
 
 	// Track if the manager has been started to prevent redundant operations
@@ -110,15 +108,10 @@ type MdnsManager struct {
 	// Unique instance ID retrieved from the ship service announcement
 	instanceID string
 
-	// Signal handler management - DISABLED
-	// Libraries should not register signal handlers - that's the application's responsibility
-	// signalHandler    chan os.Signal
-	// signalHandlerMux sync.Mutex
-	// signalOnce       sync.Once
-
 	mux,
 	muxReport,
-	muxAnnounced sync.Mutex
+	muxAnnounced,
+	shutdownMux sync.Mutex
 }
 
 func shortenString(s string, maxLen int) string {
@@ -287,51 +280,53 @@ func (m *MdnsManager) Start(pairingMode api.PairingMode, cb api.MdnsReportInterf
 	return nil
 }
 
-// Shutdown all of mDNS
+// Shutdown all of mDNS.
+// Safe to call multiple times; only the first call after each Start() performs cleanup.
 func (m *MdnsManager) Shutdown() {
-	m.shutdownOnce.Do(func() {
-		logging.Log().Debug("mdns: shutting down mDNS manager")
+	m.shutdownMux.Lock()
+	defer m.shutdownMux.Unlock()
 
-		// Safely unannounce the service
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logging.Log().Debug("mdns: panic during unannounce:", r)
-				}
-			}()
-			m.UnannounceMdnsEntry()
+	// Idempotency: if provider is already nil, nothing to shut down
+	if m.mdnsProvider == nil {
+		return
+	}
+
+	logging.Log().Debug("mdns: shutting down mDNS manager")
+
+	// Safely unannounce the service
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logging.Log().Debug("mdns: panic during unannounce:", r)
+			}
 		}()
+		m.UnannounceMdnsEntry()
+	}()
 
-		// Safely shutdown provider
-		if m.mdnsProvider != nil {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logging.Log().Debug("mdns: panic during provider shutdown:", r)
-					}
-				}()
-				m.mdnsProvider.Shutdown()
-			}()
-			m.mdnsProvider = nil
-		}
+	// Safely shutdown provider
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logging.Log().Debug("mdns: panic during provider shutdown:", r)
+			}
+		}()
+		m.mdnsProvider.Shutdown()
+	}()
+	m.mdnsProvider = nil
 
-		// Signal handler cleanup removed - no longer needed
+	// Clear the report interface to prevent goroutines from accessing it after shutdown
+	m.setReportInterface(nil)
 
-		// Clear the report interface to prevent goroutines from accessing it after shutdown
-		m.setReportInterface(nil)
+	// Clear mDNS entries to prevent contamination between runs
+	m.mux.Lock()
+	m.entries = make(map[string]*api.MdnsEntry)
+	m.pairingEntries = make(map[string]*api.ShipPairingTXT)
+	// Clear pairing callback to prevent contamination between runs
+	m.pairingCallback = nil
+	m.mux.Unlock()
 
-		// Clear mDNS entries to prevent contamination between runs
-		m.mux.Lock()
-		m.entries = make(map[string]*api.MdnsEntry)
-		m.pairingEntries = make(map[string]*api.ShipPairingTXT)
-		// Clear pairing callback to prevent contamination between runs
-		m.pairingCallback = nil
-		m.mux.Unlock()
-
-		// Reset the start state to allow restarting after shutdown
-		m.isStarted = false
-		// Note: We cannot reset sync.Once, but the isStarted flag handles restart logic
-	})
+	// Reset the start state to allow restarting after shutdown
+	m.isStarted = false
 }
 
 // Announces the service to the network via mDNS

@@ -171,6 +171,66 @@ func (s *MdnsSuite) Test_Shutdown_NoStart() {
 	s.sut.Shutdown()
 }
 
+// Test_RestartAfterShutdown verifies that Start->Shutdown->Start->Shutdown works
+// on the same MdnsManager instance. The second Shutdown must clean up the second
+// provider. This is the core lifecycle bug: sync.Once prevents the second Shutdown
+// from executing.
+func (s *MdnsSuite) Test_RestartAfterShutdown() {
+	// Use TestSetup mode to prevent creating real providers
+	s.sut.providerSelection = MdnsProviderSelectionTestSetup
+	// First cycle: Start and Shutdown
+	err := s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
+	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), s.sut.mdnsProvider)
+
+	s.sut.Shutdown()
+	assert.Nil(s.T(), s.sut.mdnsProvider)
+
+	// Second cycle: inject a fresh mock provider and Start again
+	secondProvider := mocks.NewMdnsProviderInterface(s.T())
+	secondProvider.On("Announce", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	secondProvider.On("Start", mock.Anything, mock.Anything, mock.Anything).Return(true).Once()
+	// These MUST be called during the second Shutdown - this is the core assertion
+	secondProvider.EXPECT().UnannounceService(mock.Anything).Once()
+	secondProvider.EXPECT().Shutdown().Once()
+
+	s.sut.SetMdnsProvider(secondProvider)
+	err = s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
+	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), s.sut.mdnsProvider)
+
+	// Second Shutdown must trigger cleanup on secondProvider
+	s.sut.Shutdown()
+	assert.Nil(s.T(), s.sut.mdnsProvider)
+}
+
+// Test_RestartAfterShutdown_Idempotent verifies that multiple Shutdown calls
+// after a restart are still safe (only one cleanup per cycle).
+func (s *MdnsSuite) Test_RestartAfterShutdown_Idempotent() {
+	// Use TestSetup mode to prevent creating real providers
+	s.sut.providerSelection = MdnsProviderSelectionTestSetup
+	// First cycle
+	err := s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
+	assert.Nil(s.T(), err)
+	s.sut.Shutdown()
+
+	// Second cycle with strict expectations
+	secondProvider := mocks.NewMdnsProviderInterface(s.T())
+	secondProvider.On("Announce", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	secondProvider.On("Start", mock.Anything, mock.Anything, mock.Anything).Return(true).Once()
+	secondProvider.EXPECT().UnannounceService(mock.Anything).Once()
+	secondProvider.EXPECT().Shutdown().Once()
+
+	s.sut.SetMdnsProvider(secondProvider)
+	err = s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
+	assert.Nil(s.T(), err)
+
+	// Multiple Shutdown calls on the second cycle - only one should trigger cleanup
+	s.sut.Shutdown()
+	s.sut.Shutdown()
+	s.sut.Shutdown()
+}
+
 func (s *MdnsSuite) Test_MdnsEntry() {
 	testSki := "test"
 	testService := "mdns_service"

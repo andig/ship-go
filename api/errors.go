@@ -20,6 +20,12 @@ var (
 	ErrBufferFull = errors.New("buffer full")
 )
 
+// Hub lifecycle errors
+var (
+	// ErrHubAlreadyStarted indicates Start() was called on an already-running Hub
+	ErrHubAlreadyStarted = errors.New("hub already started")
+)
+
 // Certificate and authentication errors
 var (
 	// ErrInvalidCertificate indicates certificate validation failed

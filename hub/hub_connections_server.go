@@ -67,13 +67,14 @@ func (h *Hub) startWebsocketServer() error {
 		},
 	}
 
+	serverStarted := h.serverStarted // capture for goroutine; prevents closing a replaced channel
 	go func() {
 		err := h.httpServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
 			logging.Log().Error("websocket server error:", err)
 			h.serverStartErr = err
 		}
-		close(h.serverStarted)
+		close(serverStarted)
 	}()
 
 	return nil

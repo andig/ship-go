@@ -288,12 +288,12 @@ type ShipConnectionInfoProviderInterface_ReportServiceShipID_Call struct {
 
 // ReportServiceShipID is a helper method to define mock.On call
 //   - ski string
-//   - shipid string
-func (_e *ShipConnectionInfoProviderInterface_Expecter) ReportServiceShipID(ski interface{}, shipid interface{}) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
-	return &ShipConnectionInfoProviderInterface_ReportServiceShipID_Call{Call: _e.mock.On("ReportServiceShipID", ski, shipid)}
+//   - shipID string
+func (_e *ShipConnectionInfoProviderInterface_Expecter) ReportServiceShipID(ski interface{}, shipID interface{}) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
+	return &ShipConnectionInfoProviderInterface_ReportServiceShipID_Call{Call: _e.mock.On("ReportServiceShipID", ski, shipID)}
 }
 
-func (_c *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call) Run(run func(ski string, shipid string)) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
+func (_c *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call) Run(run func(ski string, shipID string)) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
@@ -316,7 +316,7 @@ func (_c *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call) Return()
 	return _c
 }
 
-func (_c *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call) RunAndReturn(run func(ski string, shipid string)) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
+func (_c *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call) RunAndReturn(run func(ski string, shipID string)) *ShipConnectionInfoProviderInterface_ReportServiceShipID_Call {
 	_c.Run(run)
 	return _c
 }

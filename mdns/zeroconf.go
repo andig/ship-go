@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/logging"
@@ -44,7 +45,8 @@ type ZeroconfProvider struct {
 	serviceInstances map[string]*zeroconfInstanceData // instanceID -> service data
 
 	// Track if the provider is already started to prevent duplicate goroutines
-	isStarted bool
+	isStarted    bool
+	listenerDone chan struct{} // closed when chanListener exits
 
 	// Factory for creating ZeroconfServerInterface instances (injectable for testing)
 	serverFactory ZeroconfFactoryInterface
@@ -76,18 +78,18 @@ var _ api.MdnsProviderInterface = (*ZeroconfProvider)(nil)
 
 func (z *ZeroconfProvider) Start(pairingMode api.PairingMode, autoReconnect bool, cb api.MdnsResolveCB) bool {
 	z.mux.Lock()
-	defer z.mux.Unlock()
-
-	// Prevent duplicate Start() calls from creating multiple goroutines
 	if z.isStarted {
-		logging.Log().Debug("mdns: ZeroconfProvider already started, ignoring duplicate Start() call")
+		z.mux.Unlock()
+		logging.Log().Debug("mdns: ZeroconfProvider already started, ignoring duplicate Start()")
 		return true
 	}
+	z.isStarted = true
+	z.listenerDone = make(chan struct{})
+	z.mux.Unlock()
+
+	go z.chanListener(pairingMode, cb)
 
 	logging.Log().Debug("mdns: using zeroconf")
-
-	z.isStarted = true
-	go z.chanListener(pairingMode, cb)
 
 	return true
 }
@@ -106,8 +108,6 @@ func (z *ZeroconfProvider) Shutdown() {
 	}
 
 	z.mux.Lock()
-	defer z.mux.Unlock()
-
 	if z.cancel != nil {
 		z.cancel()
 		z.cancel = nil
@@ -115,6 +115,18 @@ func (z *ZeroconfProvider) Shutdown() {
 
 	// Reset the started flag so the provider can be restarted if needed
 	z.isStarted = false
+	done := z.listenerDone
+	z.mux.Unlock()
+
+	// Wait for the chanListener goroutine to finish before returning,
+	// so a subsequent Start() won't race with the old goroutine.
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(6 * time.Second):
+			logging.Log().Debug("mdns: zeroconf chanListener did not exit in time")
+		}
+	}
 }
 
 /* Enhanced Provider Interface Implementation - TDD Stubs */
@@ -178,15 +190,27 @@ func (z *ZeroconfProvider) UnannounceService(instanceID string) error {
 }
 
 func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.MdnsResolveCB) {
-	zcEntries := make(chan *zeroconf.ServiceEntry)
-	zcRemoved := make(chan *zeroconf.ServiceEntry)
+	defer func() {
+		z.mux.Lock()
+		if z.listenerDone != nil {
+			close(z.listenerDone)
+		}
+		z.mux.Unlock()
+	}()
+
+	// Buffered channels prevent the Browse goroutine from deadlocking on shutdown.
+	// When ctx is cancelled, chanListener exits and stops reading. Without a buffer,
+	// Browse's mainloop blocks forever on a channel send and leaks. With a buffer,
+	// the pending send completes into the buffer, mainloop loops back to its select,
+	// picks ctx.Done(), and cleans up normally.
+	zcEntries := make(chan *zeroconf.ServiceEntry, 2)
+	zcRemoved := make(chan *zeroconf.ServiceEntry, 2)
 
 	// Separate channels for pairing services
-	zcPairingEntries := make(chan *zeroconf.ServiceEntry)
-	zcPairingRemoved := make(chan *zeroconf.ServiceEntry)
+	zcPairingEntries := make(chan *zeroconf.ServiceEntry, 2)
+	zcPairingRemoved := make(chan *zeroconf.ServiceEntry, 2)
 
 	z.mux.Lock()
-	// for Zeroconf we need a context
 	z.ctx, z.cancel = context.WithCancel(context.Background())
 	z.mux.Unlock()
 
