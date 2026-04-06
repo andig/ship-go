@@ -46,7 +46,7 @@ func (suite *AutonomousListenerTestSuite) SetupTest() {
 	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
 	suite.localService.SetShipID("i:983327_u:C8277H008F-3")
 	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
-	suite.testSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE")
+	suite.testSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE"))
 
 	// Create listener
 	suite.sut = NewPairingListener(
@@ -76,7 +76,7 @@ func (suite *AutonomousListenerTestSuite) TestAutonomousAcceptance_ValidHMAC() {
 	}
 
 	// Mock AddCu device check (no existing device for this test)
-	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
+	suite.mockHub.EXPECT().GetTrustedAddCuDevice().Return(nil).Maybe()
 
 	// Mock successful HMAC validation
 	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
@@ -128,7 +128,7 @@ func (suite *AutonomousListenerTestSuite) TestAutonomousAcceptance_IndependentOf
 	}
 
 	// Mock AddCu device check (no existing device for this test)
-	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
+	suite.mockHub.EXPECT().GetTrustedAddCuDevice().Return(nil).Maybe()
 
 	// Mock successful validation
 	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
@@ -168,7 +168,7 @@ func (suite *AutonomousListenerTestSuite) TestNoUserConfirmationRequired() {
 	}
 
 	// Mock AddCu device check (no existing device for this test)
-	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
+	suite.mockHub.EXPECT().GetTrustedAddCuDevice().Return(nil).Maybe()
 
 	// Mock successful validation chain
 	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once()
@@ -196,7 +196,7 @@ func (suite *AutonomousListenerTestSuite) TestSpecificationCompliance_Section4_2
 	txtRecord := suite.createValidTestTXTRecord()
 
 	// Mock AddCu device check (no existing device for this test)
-	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
+	suite.mockHub.EXPECT().GetTrustedAddCuDevice().Return(nil).Maybe()
 
 	// Mock the evaluation steps per SHIP spec section 9
 	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Once() // Step 3

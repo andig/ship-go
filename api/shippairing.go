@@ -29,8 +29,8 @@ type ShipPairingServiceInterface interface {
 	// Returns a configured announcer ready to send pairing requests.
 	CreateAnnouncer(localService *ServiceDetails) PairingAnnouncerInterface
 
-	// GetPairingStatus returns the overall status of the pairing service
-	GetPairingStatus() bool
+	// IsServiceRunning returns whether the PairingService was started successfully and is currently running
+	IsServiceRunning() bool
 }
 
 // PairingAnnouncerInterface - Interface for devZ (announcer) operations
@@ -131,14 +131,13 @@ type PairingHubInterface interface {
 	//   - reason: The specific error that caused the pairing failure
 	OnPairingFailure(remoteShipID, remoteFingerprint string, reason error)
 
-	// HasTrustedAddCuDevice returns the ShipID of any trusted AddCu device, or empty string if none.
+	// GetTrustedAddCuDevice returns the ServiceDetails of any trusted AddCu device, or nil if none.
 	// This is used by the pairing listener to check if the trust slot is occupied
 	// before accepting new AddCu pairing requests.
 	//
 	// Returns:
-	//   - fingerprint: The fingerprint of the trusted AddCu device, or "" if no trusted AddCu device exists
-	//   - shipID: The SHIP ID of the trusted AddCu device, or "" if no trusted AddCu device exists
-	HasTrustedAddCuDevice() (fingerprint string, shipID string)
+	//   - ServiceDetails : The ServiceDetails of the AddCu trusted device, or nil if none.
+	GetTrustedAddCuDevice() *ServiceDetails
 }
 
 // PairingCryptoInterface - Interface for HMAC operations
@@ -191,9 +190,6 @@ type PairingCryptoInterface interface {
 // Applications implement this to provide persistent storage for the ring buffer state per SHIP
 // Pairing Service specification section 11. The library handles all ring buffer logic internally.
 //
-// This interface replaces PairingHistoryProviderInterface to simplify application implementation
-// by moving ring buffer algorithm complexity into the library where it belongs.
-//
 // Thread Safety: Implementations must be thread-safe as methods may be called concurrently.
 // Storage Requirements: Data must persist across application restarts per SHIP specification.
 type RingBufferPersistence interface {
@@ -242,44 +238,6 @@ type RingBufferPersistence interface {
 	//   Database: Use transactions for atomic updates
 	//   Memory: Update in-memory state (for testing only)
 	SaveRingBuffer(entries []DigestEntry, nextIndex int) error
-}
-
-// PairingHistoryProviderInterface - DEPRECATED: Use RingBufferPersistence instead
-// This interface will be removed in a future version. Applications should migrate to
-// RingBufferPersistence which simplifies implementation by handling ring buffer logic
-// in the library rather than requiring applications to implement it.
-//
-// Applications implement this to provide persistent storage for SHIP pairing history
-type PairingHistoryProviderInterface interface {
-	// HasSeenDigest checks if an HMAC digest has been used in a previous pairing attempt.
-	// This implements replay attack protection as required by SHIP Pairing Service
-	// specification section 9.2. Applications must maintain a history of seen digests
-	// to prevent attackers from reusing captured pairing requests.
-	//
-	// Parameters:
-	//   - alg: The HMAC algorithm used (typically "hmacSha256")
-	//   - digest: The hex-encoded HMAC digest to check
-	//
-	// Returns:
-	//   - true if this digest has been seen before (potential replay attack)
-	//   - false if this is a new, previously unseen digest
-	//
-	// Implementation note: Applications should use efficient storage (e.g., hash set)
-	// and implement ring buffer behavior per SHIP spec section 11
-	HasSeenDigest(alg, digest string) bool
-
-	// RecordPairing stores a successful pairing's HMAC digest for replay protection.
-	// This implements the digest history requirement from SHIP Pairing Service
-	// specification section 11. Applications must maintain a ring buffer of recent
-	// successful pairings to prevent digest reuse.
-	//
-	// Parameters:
-	//   - alg: The HMAC algorithm used (typically "hmacSha256")
-	//   - digest: The hex-encoded HMAC digest from the successful pairing
-	//
-	// Implementation note: Applications should implement ring buffer behavior
-	// to limit memory usage while maintaining sufficient history for security
-	RecordPairing(alg, digest string)
 }
 
 // PairingServiceReaderInterface - Callback interface for pairing events
@@ -389,11 +347,9 @@ func (s PairingSecret) Equal(other PairingSecret) bool {
 }
 
 // IsValidLength reports whether the secret length is acceptable for SHIP pairing.
-// This implementation supports:
-// - 16 bytes (raw 128-bit secret)
-// - 32 bytes (commonly used textual/encoded representation)
+// This implementation supports 16 bytes (raw 128-bit secret)
 func (s PairingSecret) IsValidLength() bool {
-	return len(s) == 16 || len(s) == 32
+	return len(s) == 16
 }
 
 /* Configuration Types */

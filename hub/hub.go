@@ -173,7 +173,7 @@ func NewHub(hubReader api.HubReaderInterface,
 var _ api.HubInterface = (*Hub)(nil)
 
 // Start the ConnectionsHub with all its services
-// 
+//
 // Returns error with description of the error that cannot be recovered from
 func (h *Hub) Start() error {
 	h.muxStarted.Lock()
@@ -471,8 +471,8 @@ func (h *Hub) serviceForTrustedShipID(shipID string) *api.ServiceDetails {
 	return nil
 }
 
-// HasTrustedAddCuDevice returns the ShipID of any trusted AddCu device, or empty string if none
-func (h *Hub) HasTrustedAddCuDevice() (string, string) {
+// GetTrustedAddCuDevice returns the ServiceDetails of any trusted AddCu device, or nil if none
+func (h *Hub) GetTrustedAddCuDevice() *api.ServiceDetails {
 	h.muxReg.RLock()
 	defer h.muxReg.RUnlock()
 
@@ -481,11 +481,11 @@ func (h *Hub) HasTrustedAddCuDevice() (string, string) {
 			service.PairingType() == api.PairingTypeAddCu &&
 			service.ShipID() != "" &&
 			service.Fingerprint() != "" {
-			return service.Fingerprint(), service.ShipID()
+			return service
 		}
 	}
 
-	return "", ""
+	return nil
 }
 
 // return the number of paired services

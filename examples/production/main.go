@@ -300,9 +300,6 @@ func (r *ProductionHubReader) AllowWaitingForTrust(identity api.ServiceIdentity)
 	return trusted
 }
 
-// ServiceConnectionStateChanged method removed - this was not part of HubReaderInterface
-// Connection state updates are handled through ServicePairingDetailUpdate
-
 // Production helper methods
 
 func (r *ProductionHubReader) addTrustedDevice(ski, brand, model, deviceType string) {

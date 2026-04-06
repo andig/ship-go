@@ -214,9 +214,6 @@ func (p *PairingHubReader) AllowWaitingForTrust(identity api.ServiceIdentity) bo
 	}
 }
 
-// ServiceConnectionStateChanged method removed - this was not part of HubReaderInterface
-// Connection state updates are handled through ServicePairingDetailUpdate
-
 // Pairing strategy implementations
 
 func (p *PairingHubReader) handleManualPairing(ski string, service api.RemoteMdnsService) bool {

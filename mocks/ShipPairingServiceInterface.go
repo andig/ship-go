@@ -142,12 +142,12 @@ func (_c *ShipPairingServiceInterface_CreateListener_Call) RunAndReturn(run func
 	return _c
 }
 
-// GetPairingStatus provides a mock function for the type ShipPairingServiceInterface
-func (_mock *ShipPairingServiceInterface) GetPairingStatus() bool {
+// IsServiceRunning provides a mock function for the type ShipPairingServiceInterface
+func (_mock *ShipPairingServiceInterface) IsServiceRunning() bool {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetPairingStatus")
+		panic("no return value specified for IsServiceRunning")
 	}
 
 	var r0 bool
@@ -159,29 +159,29 @@ func (_mock *ShipPairingServiceInterface) GetPairingStatus() bool {
 	return r0
 }
 
-// ShipPairingServiceInterface_GetPairingStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPairingStatus'
-type ShipPairingServiceInterface_GetPairingStatus_Call struct {
+// ShipPairingServiceInterface_IsServiceRunning_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsServiceRunning'
+type ShipPairingServiceInterface_IsServiceRunning_Call struct {
 	*mock.Call
 }
 
-// GetPairingStatus is a helper method to define mock.On call
-func (_e *ShipPairingServiceInterface_Expecter) GetPairingStatus() *ShipPairingServiceInterface_GetPairingStatus_Call {
-	return &ShipPairingServiceInterface_GetPairingStatus_Call{Call: _e.mock.On("GetPairingStatus")}
+// IsServiceRunning is a helper method to define mock.On call
+func (_e *ShipPairingServiceInterface_Expecter) IsServiceRunning() *ShipPairingServiceInterface_IsServiceRunning_Call {
+	return &ShipPairingServiceInterface_IsServiceRunning_Call{Call: _e.mock.On("IsServiceRunning")}
 }
 
-func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) Run(run func()) *ShipPairingServiceInterface_GetPairingStatus_Call {
+func (_c *ShipPairingServiceInterface_IsServiceRunning_Call) Run(run func()) *ShipPairingServiceInterface_IsServiceRunning_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) Return(b bool) *ShipPairingServiceInterface_GetPairingStatus_Call {
+func (_c *ShipPairingServiceInterface_IsServiceRunning_Call) Return(b bool) *ShipPairingServiceInterface_IsServiceRunning_Call {
 	_c.Call.Return(b)
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_GetPairingStatus_Call) RunAndReturn(run func() bool) *ShipPairingServiceInterface_GetPairingStatus_Call {
+func (_c *ShipPairingServiceInterface_IsServiceRunning_Call) RunAndReturn(run func() bool) *ShipPairingServiceInterface_IsServiceRunning_Call {
 	_c.Call.Return(run)
 	return _c
 }

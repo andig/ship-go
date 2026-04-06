@@ -2,6 +2,7 @@ package hub
 
 import (
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -156,7 +157,7 @@ func (s *HubSuite) Test_NewConnectionHub_PairingConfig() {
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), hub)
 
-	secret = api.PairingSecret("0123456789ABCDEF0123456789ABCDEF")
+	secret = api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	pairingConfig = api.NewPairingConfig(api.PairingModeAnnouncer, secret)
 	hub, err = newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, pairingConfig)
 	assert.NoError(s.T(), err)
@@ -166,7 +167,7 @@ func (s *HubSuite) Test_NewConnectionHub_PairingConfig() {
 func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForListener() {
 	ski := "12af9e"
 	localService := api.NewServiceDetails(ski, "", "")
-	secret := api.PairingSecret("0123456789ABCDEF0123456789ABCDEF")
+	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeListener, secret)
 
 	// Should fail - no history provider for listener mode
@@ -178,7 +179,7 @@ func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForListener() {
 func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForBothMode() {
 	ski := "12af9e"
 	localService := api.NewServiceDetails(ski, "", "")
-	secret := api.PairingSecret("0123456789ABCDEF0123456789ABCDEF")
+	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeBoth, secret)
 
 	// Should fail - no history provider for both mode
@@ -190,7 +191,7 @@ func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForBothMode() {
 func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForAnnouncer() {
 	ski := "12af9e"
 	localService := api.NewServiceDetails(ski, "", "")
-	secret := api.PairingSecret("0123456789ABCDEF0123456789ABCDEF")
+	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeAnnouncer, secret)
 
 	// Should succeed - no history provider needed for announcer
@@ -212,7 +213,7 @@ func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForOffMode() {
 func (s *HubSuite) Test_NewHub_AcceptsValidHistoryProviderForListener() {
 	ski := "12af9e"
 	localService := api.NewServiceDetails(ski, "", "")
-	secret := api.PairingSecret("0123456789ABCDEF0123456789ABCDEF")
+	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeListener, secret)
 
 	// Create valid history provider
@@ -2183,5 +2184,14 @@ func (s *HandleShipHandshakeStateUpdateTestSuite) TestHandleShipHandshakeStateUp
 
 // TODO: Add comprehensive tests for Active Pairing Announcement Enhancement
 // The functionality has been implemented but testing requires complex mock setup
-// due to the combined mDNS and pairing interfaces. For now, the implementation 
+// due to the combined mDNS and pairing interfaces. For now, the implementation
 // is validated through integration testing and manual verification.
+
+// mustHexToBytes converts hex string to bytes, panicking on error
+func mustHexToBytes(hexStr string) []byte {
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		panic(fmt.Sprintf("invalid hex string: %s", hexStr))
+	}
+	return bytes
+}

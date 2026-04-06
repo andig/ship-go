@@ -46,7 +46,7 @@ func (suite *ListenerTestSuite) SetupTest() {
 	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
 	suite.localService.SetShipID("i:983327_u:C8277H008F-3") // devA from SHIP spec
 	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
-	suite.testSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE") // devA secret from spec
+	suite.testSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE")) // devA secret from spec
 
 	// Create listener
 	suite.sut = NewPairingListener(
@@ -149,8 +149,8 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_ValidHMAC() {
 
 	// Mock AddCu device check (no existing device for this test)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	// Mock HMAC validation (should succeed with correct digest)
@@ -213,8 +213,8 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_InvalidHMAC() {
 
 	// Mock AddCu device check (no existing device for this test)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	// Mock HMAC validation (should fail)
@@ -257,8 +257,8 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_ReplayAttack() {
 
 	// Mock AddCu device check (no existing device for this test)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	// Mock successful HMAC validation
@@ -299,7 +299,7 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_ForOurDevice() {
 	suite.sut.listening = true
 
 	// Mock AddCu device check (no existing device for this test)
-	suite.mockHub.EXPECT().HasTrustedAddCuDevice().Return("", "").Maybe()
+	suite.mockHub.EXPECT().GetTrustedAddCuDevice().Return(nil).Maybe()
 
 	// Mock the autonomous validation chain for successful pairing
 	suite.mockCrypto.EXPECT().ValidateDigest(mock.AnythingOfType("api.PairingSecret"), mock.AnythingOfType("api.HMACParams"), mock.AnythingOfType("[]uint8")).Return(nil).Maybe()
@@ -386,8 +386,8 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
 
 	// Mock AddCu device check (simulate this is a potential replacement)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("EXISTINGFINGERPRINT456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB", "i:existing_u:already-paired-device").
+		GetTrustedAddCuDevice().
+		Return(api.NewServiceDetails("", "EXISTINGFINGERPRINT456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB", "i:existing_u:already-paired-device")).
 		Maybe()
 
 	// Mock HMAC validation failure (since digest is invalid)
@@ -522,8 +522,8 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_NonceParsingFailure()
 
 	// Mock AddCu device check (no existing device for this test)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	// Mock failure notification for nonce parsing error
@@ -551,8 +551,8 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_DigestParsingFailure(
 
 	// Mock AddCu device check (no existing device for this test)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	// Mock failure notification for digest parsing error
@@ -598,8 +598,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NewDeviceAfterTimeout
 
 	// Mock existing AddCu device exists with different ShipID
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id").
+		GetTrustedAddCuDevice().
+		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
 		Maybe()
 
 	// Mock HMAC validation - should succeed (key fix: we reach this point now)
@@ -652,8 +652,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_SameDeviceRepairing_S
 
 	// Mock existing AddCu device with same ShipID (re-pairing scenario)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id").
+		GetTrustedAddCuDevice().
+		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
 		Maybe()
 
 	// Mock HMAC validation - should succeed
@@ -708,8 +708,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_FailedHMACValidation_
 
 	// Mock existing AddCu device
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id").
+		GetTrustedAddCuDevice().
+		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
 		Maybe()
 
 	// Mock HMAC validation - should fail
@@ -795,8 +795,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_ReplayAttackDuringRep
 
 	// Mock existing AddCu device
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id").
+		GetTrustedAddCuDevice().
+		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
 		Maybe()
 
 	// Mock successful HMAC validation
@@ -938,8 +938,8 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_SingleValidRecord_Shou
 
 	// Mock successful validation chain
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	expectedDigestBytes, _ := hexToBytes(txtRecord.Digest)
@@ -1004,8 +1004,8 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_MultipleValidRecords_S
 
 	// Mock successful validation for first entry (processing should stop after this)
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	suite.mockCrypto.EXPECT().
@@ -1061,8 +1061,8 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_MixValidInvalidRecords
 
 	// Mock successful validation for valid record
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	validRecordDigestBytes, _ := hexToBytes(validRecord.Digest)
@@ -1167,8 +1167,8 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_ReplayAttack_ShouldDet
 
 	// Mock validation chain - detect replay attack
 	suite.mockHub.EXPECT().
-		HasTrustedAddCuDevice().
-		Return("", "").
+		GetTrustedAddCuDevice().
+		Return(nil).
 		Maybe()
 
 	txtRecordDigestBytes, _ := hexToBytes(txtRecord.Digest)

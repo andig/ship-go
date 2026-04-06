@@ -16,7 +16,7 @@ type PairingListener struct {
 	// Dependencies
 	mdns         api.MdnsPairingInterface
 	crypto       api.PairingCryptoInterface
-	history      api.PairingHistoryProviderInterface
+	history      PairingHistoryProviderInterface
 	hub          api.PairingHubInterface
 	localService *api.ServiceDetails
 
@@ -40,7 +40,7 @@ type PairingListener struct {
 func NewPairingListener(
 	mdns api.MdnsPairingInterface,
 	crypto api.PairingCryptoInterface,
-	history api.PairingHistoryProviderInterface,
+	history PairingHistoryProviderInterface,
 	hub api.PairingHubInterface,
 	localService *api.ServiceDetails,
 ) *PairingListener {

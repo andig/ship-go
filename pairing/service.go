@@ -18,7 +18,7 @@ type Service struct {
 	// Dependencies
 	mdns    api.MdnsPairingInterface
 	crypto  api.PairingCryptoInterface
-	history api.PairingHistoryProviderInterface
+	history PairingHistoryProviderInterface
 	hub     api.PairingHubInterface
 
 	// Local certificate (simplified design - no interface needed)
@@ -34,7 +34,7 @@ type Service struct {
 func NewService(
 	mdns api.MdnsPairingInterface,
 	crypto api.PairingCryptoInterface,
-	history api.PairingHistoryProviderInterface,
+	history PairingHistoryProviderInterface,
 	hub api.PairingHubInterface,
 	certificate tls.Certificate,
 ) (*Service, error) {
@@ -104,8 +104,8 @@ func (s *Service) Shutdown() {
 	s.running = false
 }
 
-// GetPairingStatus returns overall pairing service status (implements ShipPairingServiceInterface)
-func (s *Service) GetPairingStatus() bool {
+// IsServiceRunning returns overall pairing service status (implements ShipPairingServiceInterface)
+func (s *Service) IsServiceRunning() bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 

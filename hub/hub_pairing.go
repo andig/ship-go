@@ -246,7 +246,7 @@ func (h *Hub) initializePairingServiceWithConfig(config *api.PairingConfig) erro
 
 	// Create ring buffer history provider from persistence interface
 	// Use default ring buffer size of 100 entries (SHIP spec minimum is 10)
-	var historyProvider api.PairingHistoryProviderInterface
+	var historyProvider *pairing.RingBufferHistoryProvider
 	if h.ringBufferPersistence != nil {
 		ringBufferProvider, err := pairing.NewRingBufferHistoryProvider(100, h.ringBufferPersistence)
 		if err != nil {
@@ -503,25 +503,23 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 
 	// Check for existing trusted AddCu device BEFORE updating any services
 	// Only replace if this is a NEW device (different fingerprint) replacing an existing one
-	var replacedService *api.ServiceDetails
-	existingAddCuFingerprint, existingAddCuShipID := h.HasTrustedAddCuDevice()
+	var replacedService *api.ServiceDetails = h.GetTrustedAddCuDevice()
 
-	if existingAddCuShipID != "" && existingAddCuFingerprint != remoteFingerprint {
+	if replacedService != nil && replacedService.ShipID() != "" && replacedService.Fingerprint() != remoteFingerprint {
 		// Check if replacement timer is running
 		if h.addCuReplacementTracker.IsInReplacementWindow() {
 			// Timer is running - ignore this announcement (will be processed when timer expires via mDNS polling)
 			logging.Log().Debug("Ignoring pairing announcement during replacement window",
-				"existingShipID", existingAddCuShipID, "newShipID", remoteShipID)
+				"existingShipID", replacedService.ShipID(), "newShipID", remoteShipID)
 			return
 		}
-		replacedService = h.ServiceForIdentifier("", existingAddCuFingerprint)
 		// Only replace if the fingerprints are different (different devices)
-		if replacedService != nil && replacedService.ShipID() != remoteShipID {
+		if replacedService.ShipID() != remoteShipID {
 			replacedService.SetTrusted(false)
 			h.removeService(replacedService.SKI(), replacedService.Fingerprint())
 			// Stop any active replacement timer for the old device
-			h.addCuReplacementTracker.StopTimer(existingAddCuShipID)
-		} else if replacedService != nil {
+			h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
+		} else {
 			// Same fingerprint with different ShipID - don't replace, just update ShipID below
 			replacedService = nil
 		}

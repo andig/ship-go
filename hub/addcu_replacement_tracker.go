@@ -173,7 +173,7 @@ func (t *AddCuReplacementTracker) IsTracking(shipID string) bool {
 		return false
 	}
 
-	return t.pairedDeviceShipID == shipID && t.pairedDeviceShipID != ""
+	return t.pairedDeviceShipID == shipID
 }
 
 // IsInReplacementWindow returns true if any AddCu device is currently being tracked.

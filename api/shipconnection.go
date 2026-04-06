@@ -87,14 +87,10 @@ type ShipConnectionInterface interface {
 //
 // This interface enables SHIP connections to interact with the Hub's service management
 // system during the connection lifecycle. It provides trust validation, state reporting,
-// and device setup coordination using ServiceDetails objects for consistent API design.
+// and device setup coordination based on the SHIP Connections unique SKI.
 //
 // Implemented by: Hub
 // Used by: ShipConnection during handshake and connection lifecycle events
-//
-// The interface uses ServiceDetails objects to provide rich context about remote services,
-// supporting both SKI-based (SHIP 1.0.1) and fingerprint-based (SHIP Pairing Service)
-// device identification patterns.
 type ShipConnectionInfoProviderInterface interface {
 	// IsRemoteServiceForSKIPaired checks if a remote service is trusted and should be allowed to connect.
 	//

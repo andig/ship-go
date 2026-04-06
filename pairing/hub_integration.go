@@ -43,7 +43,7 @@ type PairingAnnouncer struct {
 	// Dependencies
 	mdns         api.MdnsPairingInterface
 	crypto       api.PairingCryptoInterface
-	history      api.PairingHistoryProviderInterface
+	history      PairingHistoryProviderInterface
 	localService *api.ServiceDetails
 
 	// Local certificate (simplified design - no interface needed)
@@ -68,7 +68,7 @@ func NewPairingAnnouncer(
 	mdns api.MdnsPairingInterface,
 	crypto api.PairingCryptoInterface,
 	localCert *x509.Certificate,
-	history api.PairingHistoryProviderInterface,
+	history PairingHistoryProviderInterface,
 	localService *api.ServiceDetails,
 ) *PairingAnnouncer {
 	return &PairingAnnouncer{

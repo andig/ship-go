@@ -166,9 +166,6 @@ func (c *ClientHubReader) AllowWaitingForTrust(identity api.ServiceIdentity) boo
 	return approved
 }
 
-// ServiceConnectionStateChanged method removed - this was not part of HubReaderInterface
-// Connection state updates are handled through ServicePairingDetailUpdate
-
 // Interactive client functions
 
 func (c *ClientHubReader) listDevices() {

@@ -74,7 +74,7 @@ func (suite *IntegrationTestSuite) SetupTest() {
 	suite.devZService = api.NewServiceDetails("smgwski", "", "")
 	suite.devZService.SetShipID("i:46925_u:43652bk-2-gt1") // devZ from spec
 
-	suite.sharedSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE") // From spec
+	suite.sharedSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE")) // From spec
 
 	// Create components
 	suite.announcer = NewPairingAnnouncer(
@@ -184,13 +184,13 @@ func (suite *IntegrationTestSuite) TestServiceOrchestration() {
 	assert.NotNil(suite.T(), listener)
 
 	// Verify service status
-	status := suite.service.GetPairingStatus()
+	status := suite.service.IsServiceRunning()
 	assert.True(suite.T(), status)
 
 	// Shutdown service
 	suite.service.Shutdown()
 
-	status = suite.service.GetPairingStatus()
+	status = suite.service.IsServiceRunning()
 	assert.False(suite.T(), status)
 }
 

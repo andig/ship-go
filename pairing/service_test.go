@@ -58,14 +58,14 @@ func (suite *ServiceTestSuite) TestServiceLifecycle() {
 	// Test basic service lifecycle
 
 	// Initial state
-	status := suite.sut.GetPairingStatus()
+	status := suite.sut.IsServiceRunning()
 	assert.False(suite.T(), status)
 
 	// Start service
 	err := suite.sut.Start()
 	assert.NoError(suite.T(), err)
 
-	status = suite.sut.GetPairingStatus()
+	status = suite.sut.IsServiceRunning()
 	assert.True(suite.T(), status)
 
 	// Start again should fail
@@ -76,7 +76,7 @@ func (suite *ServiceTestSuite) TestServiceLifecycle() {
 	// Shutdown
 	suite.sut.Shutdown()
 
-	status = suite.sut.GetPairingStatus()
+	status = suite.sut.IsServiceRunning()
 	assert.False(suite.T(), status)
 }
 

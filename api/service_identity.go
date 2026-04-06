@@ -16,7 +16,7 @@ type ServiceIdentity struct {
 	// a service was paired using SHIP Pairing.
 	//
 	// Note: This needs to be persisted in the applications trust store and provided with
-	// RegisterRemoveService call if known!
+	// RegisterRemoteService call if known!
 	SKI string `json:"ski"`
 
 	// Certificate fingerprint of the service
@@ -25,7 +25,7 @@ type ServiceIdentity struct {
 	// It will be provided instead of SKI when a service is paired using SHIP Pairing.
 	//
 	// Note: This needs to be persisted in the applications trust store and provided with
-	// RegisterRemoveService call if known!
+	// RegisterRemoteService call if known!
 	Fingerprint string `json:"fingerprint"`
 
 	// shipID is the SHIP identifier of the service
@@ -34,7 +34,7 @@ type ServiceIdentity struct {
 	// a service was paired using SHIP Pairing.
 	//
 	// Note: This needs to be persisted in the applications trust store and provided with
-	// RegisterRemoveService call if known!
+	// RegisterRemoteService call if known!
 	ShipID string `json:"shipID"`
 
 	// The pairing type for this service
@@ -43,7 +43,7 @@ type ServiceIdentity struct {
 	// paired using SHIP Pairing this will be set to PairingTypeAddCu (1)
 	//
 	// Note: This needs to be persisted in the applications trust store and provided with
-	// RegisterRemoveService call!
+	// RegisterRemoteService call!
 	PairingType PairingType `json:"pairingType"`
 
 	// This is the IPv4 address of the device running the service
@@ -53,7 +53,7 @@ type ServiceIdentity struct {
 	// avahi version and thus zeroconf can sometimes not detect
 	// the IPv4 address and not initiate a connection
 	//
-	// Only relevant with RegisterRemoveService, shall be ignored otherwise
+	// Only relevant with RegisterRemoteService, shall be ignored otherwise
 	IPv4 string `json:"ipv4,omitempty"`
 }
 

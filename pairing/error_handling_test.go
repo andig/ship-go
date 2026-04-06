@@ -57,7 +57,7 @@ func (suite *PairingErrorHandlingTestSuite) SetupTest() {
 	suite.testService.SetShipID("i:123_u:test-device")
 
 	// Test secret
-	suite.testSecret = api.PairingSecret("7A37DCF81BDB50F8E92CFA4160CCB3DE")
+	suite.testSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE"))
 
 	// Create fresh mocks for each test
 	suite.mockMdns = mocks.NewMdnsPairingInterface(suite.T())
@@ -291,7 +291,7 @@ func (suite *PairingErrorHandlingTestSuite) TestErrorRecoveryAndCleanup() {
 	service.Shutdown()
 
 	// Service should be cleanly shut down
-	status := service.GetPairingStatus()
+	status := service.IsServiceRunning()
 	assert.False(suite.T(), status, "Service should be stopped after shutdown")
 }
 

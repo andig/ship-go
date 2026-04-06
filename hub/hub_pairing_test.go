@@ -1437,12 +1437,12 @@ func (suite *HubPairingCompositionTestSuite) TestApplicationUsageExample() {
 	// Step 3: Application uses pairing service
 	// Mock pairing service operations
 	mockPairingService.EXPECT().Start().Return(nil).Once()
-	mockPairingService.EXPECT().GetPairingStatus().Return(true).Once()
+	mockPairingService.EXPECT().IsServiceRunning().Return(true).Once()
 
 	err := pairingService.Start()
 	assert.NoError(suite.T(), err)
 
-	status := pairingService.GetPairingStatus()
+	status := pairingService.IsServiceRunning()
 	assert.True(suite.T(), status)
 }
 

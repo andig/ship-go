@@ -60,7 +60,7 @@ type Service struct {
     listener *PairingListener                    // Pairing listener component
     mdns     api.MdnsPairingInterface            // mDNS discovery
     crypto   api.PairingCryptoInterface          // HMAC operations
-    history  api.PairingHistoryProviderInterface // Replay protection (library-managed)
+    history  PairingHistoryProviderInterface // Replay protection (library-managed)
     hub      api.PairingHubInterface             // Hub integration
     localCert *x509.Certificate                  // Local certificate
     running  bool                                // Service state
@@ -82,7 +82,7 @@ The `PairingListener` implements DevA functionality from the SHIP Pairing Servic
 type PairingListener struct {
     mdns         api.MdnsPairingInterface
     crypto       api.PairingCryptoInterface
-    history      api.PairingHistoryProviderInterface  // Library-managed ring buffer
+    history      PairingHistoryProviderInterface  // Library-managed ring buffer
     hub          api.PairingHubInterface
     localService *api.ServiceDetails
     
@@ -1094,7 +1094,6 @@ The latest evolution introduces perfect separation of concerns:
 - **Library (ship-go)**: Implements complete SHIP specification including ring buffer algorithm
 - **Applications**: Provide only simple storage operations (LoadRingBuffer/SaveRingBuffer)
 - **Hub Constructor**: Now requires 7 parameters with RingBufferPersistence as the 7th
-- **Migration Path**: Applications implementing deprecated PairingHistoryProviderInterface should migrate to simpler RingBufferPersistence
 
 The implementation seamlessly integrates with the existing SHIP 1.0.1 infrastructure while adding powerful new capabilities for modern smart home deployments.
 

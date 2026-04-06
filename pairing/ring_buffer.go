@@ -9,6 +9,41 @@ import (
 	"github.com/enbility/ship-go/api"
 )
 
+// PairingHistoryProviderInterface - Used internally by the pairing package and unit tests
+//
+// Pairing package implement this to provide persistent storage for SHIP pairing history
+type PairingHistoryProviderInterface interface {
+	// HasSeenDigest checks if an HMAC digest has been used in a previous pairing attempt.
+	// This implements replay attack protection as required by SHIP Pairing Service
+	// specification section 9.2. Applications must maintain a history of seen digests
+	// to prevent attackers from reusing captured pairing requests.
+	//
+	// Parameters:
+	//   - alg: The HMAC algorithm used (typically "hmacSha256")
+	//   - digest: The hex-encoded HMAC digest to check
+	//
+	// Returns:
+	//   - true if this digest has been seen before (potential replay attack)
+	//   - false if this is a new, previously unseen digest
+	//
+	// Implementation note: Applications should use efficient storage (e.g., hash set)
+	// and implement ring buffer behavior per SHIP spec section 11
+	HasSeenDigest(alg, digest string) bool
+
+	// RecordPairing stores a successful pairing's HMAC digest for replay protection.
+	// This implements the digest history requirement from SHIP Pairing Service
+	// specification section 11. Applications must maintain a ring buffer of recent
+	// successful pairings to prevent digest reuse.
+	//
+	// Parameters:
+	//   - alg: The HMAC algorithm used (typically "hmacSha256")
+	//   - digest: The hex-encoded HMAC digest from the successful pairing
+	//
+	// Implementation note: Applications should implement ring buffer behavior
+	// to limit memory usage while maintaining sufficient history for security
+	RecordPairing(alg, digest string)
+}
+
 // RingBufferHistoryProvider implements bounded ring buffer per SHIP spec section 11
 // with persistent storage support via RingBufferPersistence interface
 type RingBufferHistoryProvider struct {
@@ -25,7 +60,7 @@ func NewRingBufferHistoryProvider(maxSize int, persistence api.RingBufferPersist
 	if maxSize < 10 {
 		maxSize = 10 // SHIP spec minimum
 	}
-	
+
 	if persistence == nil {
 		return nil, errors.New("persistence cannot be nil")
 	}
@@ -36,12 +71,12 @@ func NewRingBufferHistoryProvider(maxSize int, persistence api.RingBufferPersist
 		entries:     make([]api.DigestEntry, maxSize),
 		next:        0,
 	}
-	
+
 	// Load initial state from persistence
 	if err := provider.loadFromPersistence(); err != nil {
 		return nil, fmt.Errorf("failed to load ring buffer state: %w", err)
 	}
-	
+
 	return provider, nil
 }
 
@@ -66,45 +101,45 @@ func (r *RingBufferHistoryProvider) loadFromPersistence() error {
 	if r.persistence == nil {
 		return nil // No persistence configured
 	}
-	
+
 	entries, nextIndex, err := r.persistence.LoadRingBuffer()
 	if err != nil {
 		return fmt.Errorf("persistence load failed: %w", err)
 	}
-	
+
 	// If loaded data is empty, keep default initialized state
 	if len(entries) == 0 {
 		return nil
 	}
-	
+
 	// Validate loaded state
 	if nextIndex < 0 || nextIndex >= len(entries) {
 		return fmt.Errorf("invalid nextIndex %d for buffer size %d", nextIndex, len(entries))
 	}
-	
+
 	// Resize our buffer if loaded data has different size
 	if len(entries) != r.maxSize {
 		// Create new buffer with our configured size
 		newEntries := make([]api.DigestEntry, r.maxSize)
-		
+
 		// Copy as much as possible from loaded data
 		copySize := len(entries)
 		if copySize > r.maxSize {
 			copySize = r.maxSize
 		}
 		copy(newEntries, entries[:copySize])
-		
+
 		// Adjust nextIndex if buffer size changed
 		if nextIndex >= r.maxSize {
 			nextIndex = nextIndex % r.maxSize
 		}
-		
+
 		r.entries = newEntries
 	} else {
 		// Use loaded data directly
 		r.entries = entries
 	}
-	
+
 	r.next = nextIndex
 	return nil
 }
@@ -114,11 +149,11 @@ func (r *RingBufferHistoryProvider) saveToPersistence() error {
 	if r.persistence == nil {
 		return nil // No persistence configured
 	}
-	
+
 	// Create a copy to avoid race conditions during save
 	entriesCopy := make([]api.DigestEntry, len(r.entries))
 	copy(entriesCopy, r.entries)
-	
+
 	return r.persistence.SaveRingBuffer(entriesCopy, r.next)
 }
 
@@ -153,7 +188,7 @@ func (r *RingBufferHistoryProvider) RecordPairing(alg, digest string) {
 	if r.next >= r.maxSize {
 		r.next = 0
 	}
-	
+
 	// Save to persistence (ignore errors to maintain availability)
 	// The pairing succeeds even if persistence fails
 	if err := r.saveToPersistence(); err != nil {

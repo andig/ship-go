@@ -5,6 +5,7 @@
 package mocks
 
 import (
+	"github.com/enbility/ship-go/api"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -35,55 +36,48 @@ func (_m *PairingHubInterface) EXPECT() *PairingHubInterface_Expecter {
 	return &PairingHubInterface_Expecter{mock: &_m.Mock}
 }
 
-// HasTrustedAddCuDevice provides a mock function for the type PairingHubInterface
-func (_mock *PairingHubInterface) HasTrustedAddCuDevice() (string, string) {
+// GetTrustedAddCuDevice provides a mock function for the type PairingHubInterface
+func (_mock *PairingHubInterface) GetTrustedAddCuDevice() *api.ServiceDetails {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for HasTrustedAddCuDevice")
+		panic("no return value specified for GetTrustedAddCuDevice")
 	}
 
-	var r0 string
-	var r1 string
-	if returnFunc, ok := ret.Get(0).(func() (string, string)); ok {
-		return returnFunc()
-	}
-	if returnFunc, ok := ret.Get(0).(func() string); ok {
+	var r0 *api.ServiceDetails
+	if returnFunc, ok := ret.Get(0).(func() *api.ServiceDetails); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*api.ServiceDetails)
+		}
 	}
-	if returnFunc, ok := ret.Get(1).(func() string); ok {
-		r1 = returnFunc()
-	} else {
-		r1 = ret.Get(1).(string)
-	}
-	return r0, r1
+	return r0
 }
 
-// PairingHubInterface_HasTrustedAddCuDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HasTrustedAddCuDevice'
-type PairingHubInterface_HasTrustedAddCuDevice_Call struct {
+// PairingHubInterface_GetTrustedAddCuDevice_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrustedAddCuDevice'
+type PairingHubInterface_GetTrustedAddCuDevice_Call struct {
 	*mock.Call
 }
 
-// HasTrustedAddCuDevice is a helper method to define mock.On call
-func (_e *PairingHubInterface_Expecter) HasTrustedAddCuDevice() *PairingHubInterface_HasTrustedAddCuDevice_Call {
-	return &PairingHubInterface_HasTrustedAddCuDevice_Call{Call: _e.mock.On("HasTrustedAddCuDevice")}
+// GetTrustedAddCuDevice is a helper method to define mock.On call
+func (_e *PairingHubInterface_Expecter) GetTrustedAddCuDevice() *PairingHubInterface_GetTrustedAddCuDevice_Call {
+	return &PairingHubInterface_GetTrustedAddCuDevice_Call{Call: _e.mock.On("GetTrustedAddCuDevice")}
 }
 
-func (_c *PairingHubInterface_HasTrustedAddCuDevice_Call) Run(run func()) *PairingHubInterface_HasTrustedAddCuDevice_Call {
+func (_c *PairingHubInterface_GetTrustedAddCuDevice_Call) Run(run func()) *PairingHubInterface_GetTrustedAddCuDevice_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *PairingHubInterface_HasTrustedAddCuDevice_Call) Return(fingerprint string, shipID string) *PairingHubInterface_HasTrustedAddCuDevice_Call {
-	_c.Call.Return(fingerprint, shipID)
+func (_c *PairingHubInterface_GetTrustedAddCuDevice_Call) Return(serviceDetails *api.ServiceDetails) *PairingHubInterface_GetTrustedAddCuDevice_Call {
+	_c.Call.Return(serviceDetails)
 	return _c
 }
 
-func (_c *PairingHubInterface_HasTrustedAddCuDevice_Call) RunAndReturn(run func() (string, string)) *PairingHubInterface_HasTrustedAddCuDevice_Call {
+func (_c *PairingHubInterface_GetTrustedAddCuDevice_Call) RunAndReturn(run func() *api.ServiceDetails) *PairingHubInterface_GetTrustedAddCuDevice_Call {
 	_c.Call.Return(run)
 	return _c
 }
