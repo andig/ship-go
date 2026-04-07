@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/logging"
@@ -17,6 +18,9 @@ type ZeroconfProvider struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	isStarted    bool
+	listenerDone chan struct{} // closed when chanListener exits
 
 	mux sync.Mutex
 }
@@ -47,6 +51,16 @@ func (z *ZeroconfProvider) getIfaces() []net.Interface {
 var _ api.MdnsProviderInterface = (*ZeroconfProvider)(nil)
 
 func (z *ZeroconfProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
+	z.mux.Lock()
+	if z.isStarted {
+		z.mux.Unlock()
+		logging.Log().Debug("mdns: ZeroconfProvider already started, ignoring duplicate Start()")
+		return true
+	}
+	z.isStarted = true
+	z.listenerDone = make(chan struct{})
+	z.mux.Unlock()
+
 	go z.chanListener(cb)
 
 	return true
@@ -56,10 +70,22 @@ func (z *ZeroconfProvider) Shutdown() {
 	z.Unannounce()
 
 	z.mux.Lock()
-	defer z.mux.Unlock()
-
 	if z.cancel != nil {
 		z.cancel()
+	}
+
+	done := z.listenerDone
+	z.isStarted = false
+	z.mux.Unlock()
+
+	// Wait for the chanListener goroutine to finish before returning,
+	// so a subsequent Start() won't race with the old goroutine.
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(6 * time.Second):
+			logging.Log().Debug("mdns: zeroconf chanListener did not exit in time")
+		}
 	}
 }
 
@@ -102,11 +128,23 @@ func (z *ZeroconfProvider) Unannounce() {
 }
 
 func (z *ZeroconfProvider) chanListener(cb api.MdnsResolveCB) {
-	zcEntries := make(chan *zeroconf.ServiceEntry)
-	zcRemoved := make(chan *zeroconf.ServiceEntry)
+	defer func() {
+		z.mux.Lock()
+		if z.listenerDone != nil {
+			close(z.listenerDone)
+		}
+		z.mux.Unlock()
+	}()
+
+	// Buffered channels prevent the Browse goroutine from deadlocking on shutdown.
+	// When ctx is cancelled, chanListener exits and stops reading. Without a buffer,
+	// Browse's mainloop blocks forever on a channel send and leaks. With a buffer,
+	// the pending send completes into the buffer, mainloop loops back to its select,
+	// picks ctx.Done(), and cleans up normally.
+	zcEntries := make(chan *zeroconf.ServiceEntry, 2)
+	zcRemoved := make(chan *zeroconf.ServiceEntry, 2)
 
 	z.mux.Lock()
-	// for Zeroconf we need a context
 	z.ctx, z.cancel = context.WithCancel(context.Background())
 	z.mux.Unlock()
 
