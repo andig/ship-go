@@ -102,7 +102,8 @@ type MdnsManager struct {
 	currentIfaces   []string            // Currently resolved interface names
 	missingIfaces   map[string]struct{} // Interfaces not resolved
 	refreshTicker   *time.Ticker        // Periodic retry timer
-	refreshStopChan chan struct{}       // Signal to stop refresh goroutine
+	refreshStopChan chan struct{}        // Signal to stop refresh goroutine
+	refreshDone     chan struct{}        // Closed when refreshLoop exits
 	refreshMux      sync.Mutex          // Protects refresh operations
 
 	mux,
@@ -327,24 +328,20 @@ func (m *MdnsManager) startInterfaceRefresh() {
 	}
 
 	m.refreshStopChan = make(chan struct{})
+	m.refreshDone = make(chan struct{})
 	m.refreshTicker = time.NewTicker(interfaceRefreshInterval)
 
 	// Capture channels for goroutine to avoid race conditions
 	stopChan := m.refreshStopChan
 	tickChan := m.refreshTicker.C
+	done := m.refreshDone
 
-	go m.refreshLoop(stopChan, tickChan)
+	go m.refreshLoop(stopChan, tickChan, done)
 }
 
 // refreshLoop is the background goroutine that periodically checks for interface changes
-func (m *MdnsManager) refreshLoop(stopChan <-chan struct{}, tickChan <-chan time.Time) {
-	defer func() {
-		m.refreshMux.Lock()
-		if m.refreshTicker != nil {
-			m.refreshTicker.Stop()
-		}
-		m.refreshMux.Unlock()
-	}()
+func (m *MdnsManager) refreshLoop(stopChan <-chan struct{}, tickChan <-chan time.Time, done chan struct{}) {
+	defer close(done)
 
 	for {
 		select {
@@ -455,25 +452,28 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 	}
 }
 
+// mdnsProviderInterfaceUpdater is implemented by providers that support
+// dynamic interface updates at runtime.
+type mdnsProviderInterfaceUpdater interface {
+	UpdateInterfaces(ifaces []net.Interface, ifaceIndexes []int32)
+}
+
 // updateProviderInterfaces updates the provider's interface list
 func (m *MdnsManager) updateProviderInterfaces(ifaces []net.Interface, ifaceIndexes []int32) {
 	if m.mdnsProvider == nil {
 		return
 	}
 
-	// Update provider's interface list using thread-safe setters
-	switch provider := m.mdnsProvider.(type) {
-	case *AvahiProvider:
-		provider.SetIfaceIndexes(ifaceIndexes)
-	case *ZeroconfProvider:
-		provider.SetIfaces(ifaces)
+	if updater, ok := m.mdnsProvider.(mdnsProviderInterfaceUpdater); ok {
+		updater.UpdateInterfaces(ifaces, ifaceIndexes)
 	}
 }
 
-// stopInterfaceRefresh stops the interface monitoring goroutine
+// stopInterfaceRefresh stops the interface monitoring goroutine and waits
+// for it to exit before returning. This ensures no goroutine is still
+// accessing shared state (e.g. mdnsProvider) after this call returns.
 func (m *MdnsManager) stopInterfaceRefresh() {
 	m.refreshMux.Lock()
-	defer m.refreshMux.Unlock()
 
 	if m.refreshStopChan != nil {
 		close(m.refreshStopChan)
@@ -483,6 +483,16 @@ func (m *MdnsManager) stopInterfaceRefresh() {
 	if m.refreshTicker != nil {
 		m.refreshTicker.Stop()
 		m.refreshTicker = nil
+	}
+
+	done := m.refreshDone
+	m.refreshMux.Unlock()
+
+	// Wait for the goroutine to exit. This must happen outside the lock
+	// because the goroutine may be in attemptResolveMapping which also
+	// acquires refreshMux.
+	if done != nil {
+		<-done
 	}
 }
 
@@ -522,6 +532,10 @@ func (m *MdnsManager) Shutdown() {
 		m.mdnsProvider.Shutdown()
 	}()
 	m.mdnsProvider = nil
+
+	// Always reset announced state so a subsequent Start() begins clean,
+	// even if UnannounceMdnsEntry above panicked before clearing it.
+	m.setIsServiceAnnounce(false)
 }
 
 // Announces the service to the network via mDNS

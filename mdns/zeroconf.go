@@ -31,8 +31,9 @@ func NewZeroconfProvider(ifaces []net.Interface) *ZeroconfProvider {
 	}
 }
 
-// SetIfaces updates the interface list in a thread-safe manner
-func (z *ZeroconfProvider) SetIfaces(ifaces []net.Interface) {
+// UpdateInterfaces updates the interface list in a thread-safe manner.
+// ZeroconfProvider uses ifaces; ifaceIndexes is ignored.
+func (z *ZeroconfProvider) UpdateInterfaces(ifaces []net.Interface, _ []int32) {
 	z.mux.Lock()
 	defer z.mux.Unlock()
 	z.ifaces = ifaces

@@ -1312,9 +1312,10 @@ func (s *MdnsSuite) Test_refreshLoop_StopSignal() {
 	tickChan := ticker.C
 
 	// Track if goroutine exits
+	doneChan := make(chan struct{})
 	done := make(chan bool)
 	go func() {
-		s.sut.refreshLoop(stopChan, tickChan)
+		s.sut.refreshLoop(stopChan, tickChan, doneChan)
 		done <- true
 	}()
 

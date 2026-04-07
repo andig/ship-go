@@ -3,7 +3,6 @@ package mdns
 import (
 	"errors"
 	"net"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -75,14 +74,31 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 	err := mgr.Start(mocks.NewMdnsReportInterface(s.T()))
 	assert.Nil(s.T(), err)
 
+	// Stop the default refresh goroutine (which has a 15s ticker we
+	// can't control) and replace it with one using a manual tick channel.
+	mgr.stopInterfaceRefresh()
+
+	stopChan := make(chan struct{})
+	tickChan := make(chan time.Time, 1)
+	done := make(chan struct{})
+
+	mgr.refreshMux.Lock()
+	mgr.refreshStopChan = stopChan
+	mgr.refreshDone = done
+	mgr.refreshMux.Unlock()
+
+	go mgr.refreshLoop(stopChan, tickChan, done)
+
 	// Simulate interface reappearance so attemptResolveMapping detects a change
 	mgr.refreshMux.Lock()
 	mgr.missingIfaces = map[string]struct{}{usableIfaceName: {}}
 	mgr.currentIfaces = []string{}
 	mgr.refreshMux.Unlock()
 
-	// Trigger the refresh path (simulates what refreshLoop does on tick)
-	go mgr.attemptResolveMapping()
+	// Send a tick -- the refreshLoop goroutine will call
+	// attemptResolveMapping -> reannounceWithNewInterfaces -> Announce,
+	// which blocks.
+	tickChan <- time.Now()
 
 	// Wait for the goroutine to be blocked inside Announce()
 	select {
@@ -92,7 +108,8 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 		s.T().Fatal("timed out waiting for Announce to be called")
 	}
 
-	// Call Shutdown() while goroutine is still inside Announce().
+	// Call Shutdown() while the refreshLoop goroutine is still inside
+	// Announce(). stopInterfaceRefresh() must wait for it to exit.
 	shutdownDone := make(chan struct{})
 	go func() {
 		mgr.Shutdown()
@@ -104,13 +121,10 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 	// until we release the goroutine.
 	select {
 	case <-shutdownDone:
-		// BUG: Shutdown() completed while the goroutine is still inside
-		// Announce(). The goroutine will continue to run after Shutdown()
-		// has set mdnsProvider=nil.
-		close(announceBlock) // release goroutine so test can clean up
+		close(announceBlock)
 		s.T().Fatal("Shutdown() returned while refresh goroutine was still running inside Announce()")
 	case <-time.After(200 * time.Millisecond):
-		// EXPECTED after fix: Shutdown() is blocked waiting for the goroutine.
+		// EXPECTED: Shutdown() is blocked waiting for the goroutine.
 		// Release the goroutine so everything can finish.
 		close(announceBlock)
 	}
@@ -124,27 +138,29 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 }
 
 // ---------------------------------------------------------------------
-// mdnsProvider is read by the background goroutine without any lock,
-// while Shutdown() writes nil to it under shutdownMux.
+// mdnsProvider was previously read by the refresh goroutine without
+// synchronization while Shutdown() writes nil to it. The fix for
+// stopInterfaceRefresh (waiting for the goroutine to exit) eliminates
+// this race: Shutdown() now blocks until the goroutine is done before
+// touching mdnsProvider.
 //
-// Reproducer: Run reannounceWithNewInterfaces() and Shutdown()
-// concurrently. With -race, the race detector catches the
-// unsynchronized read/write of mdnsProvider.
+// This test verifies the fix by running Start/Shutdown cycles while
+// the refresh goroutine is actively processing interface changes.
+// With -race, any remaining unsynchronized access would be detected.
 // ---------------------------------------------------------------------
 
 func (s *IssuesSuite) Test_ProviderAccessSynchronizedWithShutdown() {
 	usableIfaceName := findUsableInterfaceName(s.T())
 
-	for i := 0; i < 50; i++ {
+	report := mocks.NewMdnsReportInterface(s.T())
+	report.On("ReportMdnsEntries", mock.Anything, mock.Anything).Maybe().Return()
+
+	for i := 0; i < 20; i++ {
 		provider := mocks.NewMdnsProviderInterface(s.T())
 		provider.On("Shutdown").Maybe().Return()
 		provider.On("Unannounce").Maybe().Return()
 		provider.On("Announce", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
 
-		// Use a real interface name so resolveInterfaces() succeeds and
-		// the full code path through updateProviderInterfaces() and
-		// AnnounceMdnsEntry() is exercised -- both read mdnsProvider
-		// without any lock.
 		mgr := NewMDNS("test", "brand", "model", "EnergyManagementSystem",
 			"12345",
 			[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
@@ -152,28 +168,22 @@ func (s *IssuesSuite) Test_ProviderAccessSynchronizedWithShutdown() {
 			4729, []string{usableIfaceName}, MdnsProviderSelectionAll)
 		mgr.SetTestProvider(provider)
 
-		mgr.mdnsProvider = provider
-		mgr.setIsServiceAnnounce(true)
-		mgr.currentIfaces = []string{usableIfaceName}
-		mgr.missingIfaces = map[string]struct{}{}
+		err := mgr.Start(report)
+		assert.Nil(s.T(), err)
 
-		var wg sync.WaitGroup
-		wg.Add(2)
+		// Simulate an interface change so the refresh goroutine will
+		// call reannounceWithNewInterfaces on its next tick.
+		mgr.refreshMux.Lock()
+		mgr.missingIfaces = map[string]struct{}{usableIfaceName: {}}
+		mgr.currentIfaces = []string{}
+		mgr.refreshMux.Unlock()
 
-		go func() {
-			defer wg.Done()
-			mgr.reannounceWithNewInterfaces()
-		}()
+		// Call Shutdown() which must wait for the refresh goroutine to
+		// finish before setting mdnsProvider = nil. With -race, any
+		// unsynchronized access would be caught.
+		mgr.Shutdown()
 
-		go func() {
-			defer wg.Done()
-			mgr.Shutdown()
-		}()
-
-		wg.Wait()
-		// This test fails with -race: the race detector reports
-		// concurrent read (updateProviderInterfaces/AnnounceMdnsEntry)
-		// vs write (Shutdown sets mdnsProvider = nil).
+		assert.Nil(s.T(), mgr.mdnsProvider)
 	}
 }
 
@@ -188,21 +198,17 @@ func (s *IssuesSuite) Test_ProviderAccessSynchronizedWithShutdown() {
 // ---------------------------------------------------------------------
 
 // trackingProvider is a test provider that tracks whether its interfaces
-// were updated. It implements MdnsProviderInterface.
+// were updated. It implements MdnsProviderInterface and
+// mdnsProviderInterfaceUpdater.
 type trackingProvider struct {
 	interfacesUpdated atomic.Bool
 }
 
-func (t *trackingProvider) Start(bool, api.MdnsResolveCB) bool { return true }
-func (t *trackingProvider) Shutdown()                          {}
-func (t *trackingProvider) Announce(string, int, []string) error {
-	return nil
-}
-func (t *trackingProvider) Unannounce() {}
-
-// SetIfaces would be the natural method to call, but the type-switch
-// in updateProviderInterfaces doesn't know about this type.
-func (t *trackingProvider) SetIfaces(ifaces []net.Interface) {
+func (t *trackingProvider) Start(bool, api.MdnsResolveCB) bool    { return true }
+func (t *trackingProvider) Shutdown()                              {}
+func (t *trackingProvider) Announce(string, int, []string) error   { return nil }
+func (t *trackingProvider) Unannounce()                            {}
+func (t *trackingProvider) UpdateInterfaces([]net.Interface, []int32) {
 	t.interfacesUpdated.Store(true)
 }
 

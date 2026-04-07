@@ -60,8 +60,9 @@ func NewAvahiProvider(ifaceIndexes []int32) *AvahiProvider {
 	}
 }
 
-// SetIfaceIndexes updates the interface indexes in a thread-safe manner
-func (a *AvahiProvider) SetIfaceIndexes(ifaceIndexes []int32) {
+// UpdateInterfaces updates the interface indexes in a thread-safe manner.
+// AvahiProvider uses ifaceIndexes; ifaces is ignored.
+func (a *AvahiProvider) UpdateInterfaces(_ []net.Interface, ifaceIndexes []int32) {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	a.ifaceIndexes = ifaceIndexes
