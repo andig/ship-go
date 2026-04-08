@@ -23,7 +23,7 @@ type ZeroconfSuite struct {
 }
 
 func (z *ZeroconfSuite) BeforeTest(suiteName, testName string) {
-	z.sut = NewZeroconfProvider([]net.Interface{})
+	z.sut = NewZeroconfProvider([]net.Interface{}, nil, nil)
 }
 
 func (z *ZeroconfSuite) AfterTest(suiteName, testName string) {
