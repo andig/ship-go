@@ -94,7 +94,16 @@ func (a *AvahiProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
 	}
 	a.setupSuccessful = true
 	if a.shutdownChan == nil {
-		a.shutdownChan = make(chan struct{})
+		// Buffered (capacity 1) so Shutdown()'s send below never blocks
+		// while holding a.mux. If chanListener is busy inside
+		// processService (e.g. parked in a dBus call like ResolveService,
+		// or contending for a.mux via getIfaceIndexes), an unbuffered
+		// send would create a lock/channel deadlock cycle: Shutdown holds
+		// a.mux and waits for the send to complete, while chanListener
+		// cannot return to its select to receive until it either finishes
+		// processService or acquires a.mux -- both of which Shutdown is
+		// blocking.
+		a.shutdownChan = make(chan struct{}, 1)
 	}
 	if a.addServiceChan == nil {
 		a.addServiceChan = make(chan avahi.Service)
@@ -128,7 +137,11 @@ func (a *AvahiProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
 
 	if !a.listenerRunning {
 		a.listenerRunning = true
-		go a.chanListener(cb)
+		// Capture channels for the goroutine so it does not read the
+		// provider fields directly. This avoids a data race with
+		// Shutdown() nilling a.shutdownChan / a.addServiceChan /
+		// a.removeServiceChan after closing them.
+		go a.chanListener(cb, a.shutdownChan, a.addServiceChan, a.removeServiceChan)
 	}
 
 	return true
@@ -358,17 +371,24 @@ func (a *AvahiProvider) attemptReconnect(cb api.MdnsResolveCB, serviceData *mdns
 	}
 }
 
-// listen to service changes and shutdown
-func (a *AvahiProvider) chanListener(cb api.MdnsResolveCB) {
+// listen to service changes and shutdown.
+// shutdownChan, addServiceChan and removeServiceChan are passed in so this
+// goroutine never reads the provider fields directly -- Shutdown() is free
+// to close and nil those fields without racing against this select.
+func (a *AvahiProvider) chanListener(
+	cb api.MdnsResolveCB,
+	shutdownChan chan struct{},
+	addServiceChan, removeServiceChan chan avahi.Service,
+) {
 	for {
 		select {
-		case <-a.shutdownChan:
+		case <-shutdownChan:
 			return
-		case service := <-a.addServiceChan:
+		case service := <-addServiceChan:
 			if err := a.processService(service, false, cb); err != nil {
 				logging.Log().Debug("mdns: avahi -", err)
 			}
-		case service := <-a.removeServiceChan:
+		case service := <-removeServiceChan:
 			if err := a.processService(service, true, cb); err != nil {
 				logging.Log().Debug("mdns: avahi -", err)
 			}

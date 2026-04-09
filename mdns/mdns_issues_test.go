@@ -409,6 +409,136 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 	})
 }
 
+// ---------------------------------------------------------------------
+// AvahiProvider.Shutdown() sends on an unbuffered shutdownChan while
+// holding a.mux (avahi.go:154). If chanListener is not sitting at the
+// `select` -- e.g. because it received a service from addServiceChan and
+// is now inside processService -- the send blocks forever. Shutdown()
+// cannot release a.mux because the send is not complete; chanListener
+// cannot return to the select because it is busy elsewhere in
+// processService. Classic lock/channel deadlock.
+//
+// This PR makes the bug materially worse by introducing getIfaceIndexes(),
+// a new code path inside processService that acquires a.mux. Before the
+// PR, processService read a.ifaceIndexes without locking, so a Shutdown
+// holding a.mux could at worst wait for ResolveService to return. Now,
+// Shutdown holding a.mux *actively poisons* chanListener's progress by
+// blocking it inside getIfaceIndexes the instant it enters processService,
+// guaranteeing the deadlock cycle.
+//
+// This reproducer deterministically pins chanListener inside
+// processService (past getIfaceIndexes, blocked inside a mocked
+// ResolveService) and then invokes Shutdown(). With the bug, Shutdown()
+// never completes. With the fix, Shutdown() returns promptly regardless
+// of chanListener's state.
+//
+// Fix: buffer shutdownChan (make(chan struct{}, 1)) or move the send
+// after a.mux.Unlock(). Either eliminates the lock/channel cycle and
+// also covers the getIfaceIndexes variant, which shares the same root
+// cause.
+// ---------------------------------------------------------------------
+
+func (s *IssuesSuite) Test_AvahiShutdownDoesNotDeadlockOnBusyChanListener() {
+	avahiMock := avahiMocks.NewServerInterface(s.T())
+	serviceBrowserMock := avahiMocks.NewServiceBrowserInterface(s.T())
+
+	sut := NewAvahiProvider([]int32{1})
+	sut.avServer = avahiMock
+
+	// Start the provider. Spawns chanListener in a goroutine.
+	avahiMock.EXPECT().Setup(mock.Anything).Return(nil).Once()
+	avahiMock.EXPECT().Start().Return().Once()
+	avahiMock.EXPECT().GetAPIVersion().Return(0, nil).Once()
+	avahiMock.EXPECT().ServiceBrowserNew(
+		mock.AnythingOfType("chan avahi.Service"),
+		mock.AnythingOfType("chan avahi.Service"),
+		int32(-1), int32(-1),
+		shipZeroConfServiceType, shipZeroConfDomain,
+		uint32(0)).Return(serviceBrowserMock, nil).Once()
+
+	noopCB := func(map[string]string, string, string, []net.IP, int, bool) {}
+	assert.True(s.T(), sut.Start(true, noopCB))
+
+	// Park chanListener inside processService: ResolveService blocks on a
+	// signal. By the time it runs, chanListener has already received from
+	// addServiceChan, passed getIfaceIndexes, and is no longer sitting on
+	// the select -- exactly the state where an unbuffered send on
+	// shutdownChan has no receiver available.
+	resolveInProgress := make(chan struct{})
+	releaseResolve := make(chan struct{})
+	avahiMock.On("ResolveService",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
+	).Run(func(args mock.Arguments) {
+		close(resolveInProgress)
+		<-releaseResolve
+	}).Return(avahi.Service{}, errors.New("released after test")).Once()
+
+	testService := avahi.Service{
+		Interface: 1, // must match ifaceIndexes[0] so processService reaches ResolveService
+		Name:      "TestService",
+		Type:      "_ship._tcp",
+		Domain:    "local",
+		Aprotocol: -1,
+	}
+
+	// Unbuffered send: returns only after chanListener has received it
+	// and is now executing processService.
+	sut.addServiceChan <- testService
+
+	// Wait until chanListener is definitely inside ResolveService.
+	select {
+	case <-resolveInProgress:
+	case <-time.After(2 * time.Second):
+		close(releaseResolve)
+		s.T().Fatal("ResolveService was never invoked by chanListener")
+	}
+
+	// Mocks used on the Shutdown path.
+	avahiMock.EXPECT().ServiceBrowserFree(serviceBrowserMock).Return().Once()
+	avahiMock.EXPECT().Shutdown().Return().Once()
+
+	// Invoke Shutdown() from a goroutine and measure its liveness. With
+	// the fix in place, Shutdown() returns promptly regardless of what
+	// chanListener is doing.
+	shutdownDone := make(chan struct{})
+	go func() {
+		sut.Shutdown()
+		close(shutdownDone)
+	}()
+
+	const shutdownDeadline = 500 * time.Millisecond
+	select {
+	case <-shutdownDone:
+		// PASS: Shutdown is decoupled from chanListener's progress.
+		// Let chanListener unwind for clean teardown.
+		close(releaseResolve)
+
+	case <-time.After(shutdownDeadline):
+		// BUG: Shutdown() is blocked on `a.shutdownChan <- struct{}{}`
+		// at avahi.go:154. Release chanListener so Shutdown can
+		// eventually unwind and we can report the failure cleanly --
+		// once chanListener returns to its select it will receive the
+		// pending send and unblock Shutdown.
+		close(releaseResolve)
+		select {
+		case <-shutdownDone:
+		case <-time.After(2 * time.Second):
+			s.T().Fatal("Shutdown remained blocked even after releasing chanListener")
+		}
+		s.T().Fatalf(
+			"DEADLOCK: AvahiProvider.Shutdown() did not complete within %s "+
+				"while chanListener was busy inside processService. "+
+				"Shutdown is blocked on the unbuffered send "+
+				"`a.shutdownChan <- struct{}{}` at avahi.go:154 while "+
+				"holding a.mux. Its liveness must not depend on chanListener "+
+				"being idle. Fix: buffer shutdownChan with capacity 1, or "+
+				"move the send after a.mux.Unlock().",
+			shutdownDeadline,
+		)
+	}
+}
+
 // Helper: verify avahi.InterfaceUnspec is what we expect
 func init() {
 	_ = avahi.InterfaceUnspec // ensure import is used
