@@ -109,6 +109,14 @@ func (h *Hub) Start() error {
 	h.muxStarted.Lock()
 	defer h.muxStarted.Unlock()
 
+	if h.hasStarted {
+		return fmt.Errorf("%w: call Shutdown() before restarting", api.ErrHubAlreadyStarted)
+	}
+
+	// Reset server state for a fresh start or retry after a previous failure
+	h.serverStarted = make(chan struct{})
+	h.serverStartErr = nil
+
 	// start the websocket server
 	if err := h.startWebsocketServer(); err != nil {
 		return fmt.Errorf("failed to start hub: %w", err)
@@ -203,6 +211,13 @@ func (h *Hub) Shutdown() {
 	case <-time.After(3 * time.Second):
 		logging.Log().Error("timeout waiting for connections to close")
 	}
+
+	// Reset lifecycle state so the Hub can be restarted
+	h.muxStarted.Lock()
+	h.hasStarted = false
+	h.serverStarted = make(chan struct{})
+	h.serverStartErr = nil
+	h.muxStarted.Unlock()
 }
 
 // return the service for a SKI
