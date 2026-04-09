@@ -31,6 +31,24 @@ func NewZeroconfProvider(ifaces []net.Interface) *ZeroconfProvider {
 	}
 }
 
+// UpdateInterfaces updates the interface list in a thread-safe manner.
+// ZeroconfProvider uses ifaces; ifaceIndexes is ignored.
+func (z *ZeroconfProvider) UpdateInterfaces(ifaces []net.Interface, _ []int32) {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	z.ifaces = ifaces
+}
+
+// getIfaces returns a copy of the interface list in a thread-safe manner
+func (z *ZeroconfProvider) getIfaces() []net.Interface {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	// Return a copy to avoid race conditions
+	ifacesCopy := make([]net.Interface, len(z.ifaces))
+	copy(ifacesCopy, z.ifaces)
+	return ifacesCopy
+}
+
 var _ api.MdnsProviderInterface = (*ZeroconfProvider)(nil)
 
 func (z *ZeroconfProvider) Start(autoReconnect bool, cb api.MdnsResolveCB) bool {
@@ -77,15 +95,23 @@ func (z *ZeroconfProvider) Announce(serviceName string, port int, txt []string) 
 
 	// use Zeroconf library if avahi is not available
 	// Set TTL to 2 minutes as defined in SHIP chapter 7
-	mDNSServer, err := zeroconf.Register(serviceName, shipZeroConfServiceType, shipZeroConfDomain, port, txt, z.ifaces, zeroconf.TTL(120))
+	ifaces := z.getIfaces()
+	mDNSServer, err := zeroconf.Register(serviceName, shipZeroConfServiceType, shipZeroConfDomain, port, txt, ifaces, zeroconf.TTL(120))
 	if err != nil {
 		return err
 	}
 
 	z.mux.Lock()
-	defer z.mux.Unlock()
-
+	oldServer := z.zc
 	z.zc = mDNSServer
+	z.mux.Unlock()
+
+	// Shut down the old server AFTER the new one is running.
+	// This avoids a window where the service is completely unannounced,
+	// which would cause remote devices to think we left the network.
+	if oldServer != nil {
+		oldServer.Shutdown()
+	}
 
 	return nil
 }
@@ -123,8 +149,10 @@ func (z *ZeroconfProvider) chanListener(cb api.MdnsResolveCB) {
 	z.ctx, z.cancel = context.WithCancel(context.Background())
 	z.mux.Unlock()
 
+	// Get a thread-safe copy of interfaces
+	ifaces := z.getIfaces()
 	go func() {
-		_ = zeroconf.Browse(z.ctx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(z.ifaces))
+		_ = zeroconf.Browse(z.ctx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(ifaces))
 	}()
 
 	for {
