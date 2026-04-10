@@ -118,7 +118,7 @@ func (z *ZeroconfSuite) Test_GoroutineLeakOnShutdown() {
 	cb := func(elements map[string]string, name, host string, addresses []net.IP, port int, remove bool) {}
 
 	// Use a single provider across multiple cycles (this is what triggers the leak)
-	provider := NewZeroconfProvider([]net.Interface{})
+	provider := NewZeroconfProvider([]net.Interface{}, nil, nil)
 
 	baseline := runtime.NumGoroutine()
 	var goroutinesPerCycle []int

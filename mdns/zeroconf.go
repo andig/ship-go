@@ -30,7 +30,7 @@ type ZeroconfProvider struct {
 
 // The connection factory and interface provider can be replaced with mocks for testing
 //
-// For normal operation no special connection factory or interface provider need to be passed
+// For normal operation no special connection factory or interface provider need to be passed (simply pass nil)
 func NewZeroconfProvider(ifaces []net.Interface, connFactory *zapi.ConnectionFactory, interfaceProvider *zapi.InterfaceProvider) *ZeroconfProvider {
 	zConnFactory := zeroconf.NewConnectionFactory()
 	if connFactory != nil {
