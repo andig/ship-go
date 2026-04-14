@@ -37,16 +37,16 @@ func (_m *ShipPairingServiceInterface) EXPECT() *ShipPairingServiceInterface_Exp
 }
 
 // CreateAnnouncer provides a mock function for the type ShipPairingServiceInterface
-func (_mock *ShipPairingServiceInterface) CreateAnnouncer(localService *api.ServiceDetails) api.PairingAnnouncerInterface {
-	ret := _mock.Called(localService)
+func (_mock *ShipPairingServiceInterface) CreateAnnouncer() api.PairingAnnouncerInterface {
+	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateAnnouncer")
 	}
 
 	var r0 api.PairingAnnouncerInterface
-	if returnFunc, ok := ret.Get(0).(func(*api.ServiceDetails) api.PairingAnnouncerInterface); ok {
-		r0 = returnFunc(localService)
+	if returnFunc, ok := ret.Get(0).(func() api.PairingAnnouncerInterface); ok {
+		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(api.PairingAnnouncerInterface)
@@ -61,20 +61,13 @@ type ShipPairingServiceInterface_CreateAnnouncer_Call struct {
 }
 
 // CreateAnnouncer is a helper method to define mock.On call
-//   - localService *api.ServiceDetails
-func (_e *ShipPairingServiceInterface_Expecter) CreateAnnouncer(localService interface{}) *ShipPairingServiceInterface_CreateAnnouncer_Call {
-	return &ShipPairingServiceInterface_CreateAnnouncer_Call{Call: _e.mock.On("CreateAnnouncer", localService)}
+func (_e *ShipPairingServiceInterface_Expecter) CreateAnnouncer() *ShipPairingServiceInterface_CreateAnnouncer_Call {
+	return &ShipPairingServiceInterface_CreateAnnouncer_Call{Call: _e.mock.On("CreateAnnouncer")}
 }
 
-func (_c *ShipPairingServiceInterface_CreateAnnouncer_Call) Run(run func(localService *api.ServiceDetails)) *ShipPairingServiceInterface_CreateAnnouncer_Call {
+func (_c *ShipPairingServiceInterface_CreateAnnouncer_Call) Run(run func()) *ShipPairingServiceInterface_CreateAnnouncer_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *api.ServiceDetails
-		if args[0] != nil {
-			arg0 = args[0].(*api.ServiceDetails)
-		}
-		run(
-			arg0,
-		)
+		run()
 	})
 	return _c
 }
@@ -84,22 +77,22 @@ func (_c *ShipPairingServiceInterface_CreateAnnouncer_Call) Return(pairingAnnoun
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_CreateAnnouncer_Call) RunAndReturn(run func(localService *api.ServiceDetails) api.PairingAnnouncerInterface) *ShipPairingServiceInterface_CreateAnnouncer_Call {
+func (_c *ShipPairingServiceInterface_CreateAnnouncer_Call) RunAndReturn(run func() api.PairingAnnouncerInterface) *ShipPairingServiceInterface_CreateAnnouncer_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // CreateListener provides a mock function for the type ShipPairingServiceInterface
-func (_mock *ShipPairingServiceInterface) CreateListener(localService *api.ServiceDetails) api.PairingListenerInterface {
-	ret := _mock.Called(localService)
+func (_mock *ShipPairingServiceInterface) CreateListener() api.PairingListenerInterface {
+	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateListener")
 	}
 
 	var r0 api.PairingListenerInterface
-	if returnFunc, ok := ret.Get(0).(func(*api.ServiceDetails) api.PairingListenerInterface); ok {
-		r0 = returnFunc(localService)
+	if returnFunc, ok := ret.Get(0).(func() api.PairingListenerInterface); ok {
+		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(api.PairingListenerInterface)
@@ -114,20 +107,13 @@ type ShipPairingServiceInterface_CreateListener_Call struct {
 }
 
 // CreateListener is a helper method to define mock.On call
-//   - localService *api.ServiceDetails
-func (_e *ShipPairingServiceInterface_Expecter) CreateListener(localService interface{}) *ShipPairingServiceInterface_CreateListener_Call {
-	return &ShipPairingServiceInterface_CreateListener_Call{Call: _e.mock.On("CreateListener", localService)}
+func (_e *ShipPairingServiceInterface_Expecter) CreateListener() *ShipPairingServiceInterface_CreateListener_Call {
+	return &ShipPairingServiceInterface_CreateListener_Call{Call: _e.mock.On("CreateListener")}
 }
 
-func (_c *ShipPairingServiceInterface_CreateListener_Call) Run(run func(localService *api.ServiceDetails)) *ShipPairingServiceInterface_CreateListener_Call {
+func (_c *ShipPairingServiceInterface_CreateListener_Call) Run(run func()) *ShipPairingServiceInterface_CreateListener_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *api.ServiceDetails
-		if args[0] != nil {
-			arg0 = args[0].(*api.ServiceDetails)
-		}
-		run(
-			arg0,
-		)
+		run()
 	})
 	return _c
 }
@@ -137,7 +123,7 @@ func (_c *ShipPairingServiceInterface_CreateListener_Call) Return(pairingListene
 	return _c
 }
 
-func (_c *ShipPairingServiceInterface_CreateListener_Call) RunAndReturn(run func(localService *api.ServiceDetails) api.PairingListenerInterface) *ShipPairingServiceInterface_CreateListener_Call {
+func (_c *ShipPairingServiceInterface_CreateListener_Call) RunAndReturn(run func() api.PairingListenerInterface) *ShipPairingServiceInterface_CreateListener_Call {
 	_c.Call.Return(run)
 	return _c
 }

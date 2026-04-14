@@ -2366,7 +2366,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_Success()
 	suite.sut.pairingService = suite.mockPairingService
 
 	// Setup expectations
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Once()
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once()
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once()
 
 	// Act
@@ -2385,7 +2385,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_UsesHubPa
 	// Capture the context passed to StartListening
 	var capturedContext context.Context
 
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Once()
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once()
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().Run(func(args mock.Arguments) {
 		capturedContext = args.Get(0).(context.Context)
 	})
@@ -2436,7 +2436,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ListenerC
 	// Setup: Configure pairing service to return nil listener
 	suite.sut.pairingService = suite.mockPairingService
 
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(nil).Once()
+	suite.mockPairingService.EXPECT().CreateListener().Return(nil).Once()
 
 	// Act
 	err := suite.sut.enablePairingListener(suite.validConfig)
@@ -2453,7 +2453,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_StartList
 	suite.sut.pairingService = suite.mockPairingService
 	expectedError := errors.New("mDNS announcement failed")
 
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Once()
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once()
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(expectedError).Once()
 
 	// Act
@@ -2509,7 +2509,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ContextCa
 	suite.sut.pairingCancel() // Cancel the context
 
 	// Setup expectations - StartListening should receive cancelled context
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Once()
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once()
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(context.Canceled).Once()
 
 	// Act
@@ -2572,7 +2572,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ThreadSaf
 
 	// Setup expectations for listener reuse behavior:
 	// First call creates listener, subsequent calls reuse it
-	suite.mockPairingService.EXPECT().CreateListener(suite.localService).Return(suite.mockListener).Times(1) // Only first call creates
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Times(1) // Only first call creates
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Times(3)        // All calls start listening
 
 	// Act: Call enablePairingListener from multiple goroutines
@@ -2607,7 +2607,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_PassesCor
 	var capturedContext context.Context
 	var capturedSecret api.PairingSecret
 
-	suite.mockPairingService.EXPECT().CreateListener(mock.Anything).Return(suite.mockListener).Once().Run(func(args mock.Arguments) {
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once().Run(func(args mock.Arguments) {
 		capturedService = args.Get(0).(*api.ServiceDetails)
 	})
 

@@ -92,6 +92,7 @@ func (suite *IntegrationTestSuite) SetupTest() {
 		suite.mockMdns, suite.mockCrypto,
 		suite.mockHistoryA, suite.mockHubA,
 		suite.testCert,
+		suite.devAService.ShipID(),
 	)
 	require.NoError(suite.T(), err)
 }
@@ -180,7 +181,7 @@ func (suite *IntegrationTestSuite) TestServiceOrchestration() {
 	assert.NoError(suite.T(), err)
 
 	// Create and configure listener
-	listener := suite.service.CreateListener(suite.devAService)
+	listener := suite.service.CreateListener()
 	assert.NotNil(suite.T(), listener)
 
 	// Verify service status

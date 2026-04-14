@@ -209,6 +209,7 @@ func (suite *SpecificationIntegrationTestSuite) setupServices() {
 		announcerHistory,
 		suite.mockAnnouncerHub,
 		suite.devZCert, // devZ uses its own cert
+		suite.devZService.ShipID(),
 	)
 	require.NoError(suite.T(), err)
 
@@ -218,6 +219,7 @@ func (suite *SpecificationIntegrationTestSuite) setupServices() {
 		listenerHistory,
 		suite.mockListenerHub,
 		suite.devACert, // devA uses its own cert
+		suite.devAService.ShipID(),
 	)
 	require.NoError(suite.T(), err)
 }
@@ -234,7 +236,7 @@ func (suite *SpecificationIntegrationTestSuite) TestSpecificationCompleteFlow() 
 	defer suite.listenerService.Shutdown()
 
 	// Setup devZ (announcer) to announce to devA
-	announcerInterface := suite.announcerService.CreateAnnouncer(suite.devZService)
+	announcerInterface := suite.announcerService.CreateAnnouncer()
 	require.NotNil(suite.T(), announcerInterface)
 	
 	// Cast to concrete type to access EnablePairingService
@@ -301,7 +303,7 @@ func (suite *SpecificationIntegrationTestSuite) TestSpecificationCompleteFlow() 
 
 	// Simulate devA (listener) discovering and validating the announcement
 	// In a real scenario, this would be triggered by mDNS discovery
-	listener := suite.listenerService.CreateListener(suite.devAService)
+	listener := suite.listenerService.CreateListener()
 	require.NotNil(suite.T(), listener)
 
 	// Create the exact TXT record that would be received via mDNS

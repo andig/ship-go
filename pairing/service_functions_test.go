@@ -30,6 +30,7 @@ func (s *ServiceFunctionsSuite) SetupTest() {
 		nil, // history - not needed for these tests
 		nil, // hub - not needed for these tests
 		certificate,
+		"test-ship-id",
 	)
 	s.Require().NoError(err)
 }

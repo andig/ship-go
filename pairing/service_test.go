@@ -48,6 +48,7 @@ func (suite *ServiceTestSuite) SetupTest() {
 		suite.mockHistory,
 		suite.mockHub,
 		suite.testCert,
+		"test-ship-id",
 	)
 	require.NoError(suite.T(), err)
 }
@@ -88,8 +89,7 @@ func (suite *ServiceTestSuite) TestShutdown_ServiceStateOnly() {
 	assert.NoError(suite.T(), err)
 
 	// Create announcer (stateless factory)
-	localService := api.NewServiceDetails("testski", "", "")
-	announcer := suite.sut.CreateAnnouncer(localService)
+	announcer := suite.sut.CreateAnnouncer()
 	assert.NotNil(suite.T(), announcer)
 
 	// Cast to concrete type to access EnablePairingService
@@ -145,8 +145,7 @@ func (suite *ServiceTestSuite) TestShutdown_StatelessBehavior() {
 	assert.NoError(suite.T(), err)
 
 	// Create announcer (stateless factory)
-	localService := api.NewServiceDetails("testski", "", "")
-	announcer := suite.sut.CreateAnnouncer(localService)
+	announcer := suite.sut.CreateAnnouncer()
 	assert.NotNil(suite.T(), announcer)
 
 	// Announcer starts inactive
@@ -175,8 +174,7 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	assert.NoError(suite.T(), err)
 
 	// Create first announcer
-	localService1 := api.NewServiceDetails("ski1", "", "")
-	announcer1 := suite.sut.CreateAnnouncer(localService1)
+	announcer1 := suite.sut.CreateAnnouncer()
 	assert.NotNil(suite.T(), announcer1)
 
 	// Enable and start first announcer
@@ -212,8 +210,7 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	assert.Equal(suite.T(), target1, status1.Target)
 
 	// Create second announcer - should NOT affect first announcer
-	localService2 := api.NewServiceDetails("ski2", "", "")
-	announcer2 := suite.sut.CreateAnnouncer(localService2)
+	announcer2 := suite.sut.CreateAnnouncer()
 	assert.NotNil(suite.T(), announcer2)
 
 	// Enable and start second announcer
@@ -256,34 +253,6 @@ func (suite *ServiceTestSuite) TestCreateAnnouncer_CreatesIndependentInstances()
 	assert.NotEqual(suite.T(), announcer1, announcer2)
 }
 
-func (suite *ServiceTestSuite) TestCreateAnnouncer_AlwaysCreatesNew() {
-	// Test that CreateAnnouncer always creates new instances (stateless factory)
-
-	// Start service
-	err := suite.sut.Start()
-	assert.NoError(suite.T(), err)
-
-	// Use different localServices to ensure different instances
-	localService1 := api.NewServiceDetails("testski1", "", "")
-	localService2 := api.NewServiceDetails("testski2", "", "")
-	localService3 := api.NewServiceDetails("testski3", "", "")
-
-	// First call creates announcer
-	announcer1 := suite.sut.CreateAnnouncer(localService1)
-	assert.NotNil(suite.T(), announcer1)
-
-	// Second call should create different instance
-	announcer2 := suite.sut.CreateAnnouncer(localService2)
-	assert.NotNil(suite.T(), announcer2)
-	assert.NotEqual(suite.T(), announcer1, announcer2, "Each call should create new instance")
-
-	// Third call should also create different instance
-	announcer3 := suite.sut.CreateAnnouncer(localService3)
-	assert.NotNil(suite.T(), announcer3)
-	assert.NotEqual(suite.T(), announcer1, announcer3, "Third call should create new instance")
-	assert.NotEqual(suite.T(), announcer2, announcer3, "Third call should be different from second")
-}
-
 func (suite *ServiceTestSuite) TestCreateListener_TracksListener() {
 	// Test that CreateListener properly tracks the listener in the service
 
@@ -292,35 +261,13 @@ func (suite *ServiceTestSuite) TestCreateListener_TracksListener() {
 	assert.NoError(suite.T(), err)
 
 	// Create listener
-	localService := api.NewServiceDetails("testski", "", "")
-	listener := suite.sut.CreateListener(localService)
+	listener := suite.sut.CreateListener()
 	assert.NotNil(suite.T(), listener)
 
 	// Verify listener is tracked (will be accessible after implementation)
 	// For now just verify it creates a listener
 	_, ok := listener.(*PairingListener)
 	assert.True(suite.T(), ok, "Should create a PairingListener instance")
-}
-
-func (suite *ServiceTestSuite) TestCreateListener_ReplacesExisting() {
-	// Test that CreateListener replaces any existing listener
-
-	// Start service
-	err := suite.sut.Start()
-	assert.NoError(suite.T(), err)
-
-	// Create first listener
-	localService1 := api.NewServiceDetails("ski1", "", "")
-	listener1 := suite.sut.CreateListener(localService1)
-	assert.NotNil(suite.T(), listener1)
-
-	// Create second listener (should replace first)
-	localService2 := api.NewServiceDetails("ski2", "", "")
-	listener2 := suite.sut.CreateListener(localService2)
-	assert.NotNil(suite.T(), listener2)
-
-	// Verify they are different instances
-	assert.NotEqual(suite.T(), listener1, listener2)
 }
 
 func (suite *ServiceTestSuite) TestShutdown_CleansUpActiveListener() {
@@ -331,8 +278,7 @@ func (suite *ServiceTestSuite) TestShutdown_CleansUpActiveListener() {
 	assert.NoError(suite.T(), err)
 
 	// Create and start listener
-	localService := api.NewServiceDetails("testski", "", "")
-	listener := suite.sut.CreateListener(localService)
+	listener := suite.sut.CreateListener()
 	assert.NotNil(suite.T(), listener)
 
 	// Cast to concrete type to access internal state
@@ -358,8 +304,7 @@ func (suite *ServiceTestSuite) TestShutdown_SkipsInactiveListener() {
 	assert.NoError(suite.T(), err)
 
 	// Create listener but don't activate it
-	localService := api.NewServiceDetails("testski", "", "")
-	listener := suite.sut.CreateListener(localService)
+	listener := suite.sut.CreateListener()
 	assert.NotNil(suite.T(), listener)
 
 	// Cast to concrete type to verify state
@@ -382,12 +327,11 @@ func (suite *ServiceTestSuite) TestShutdown_CleansUpBothComponents() {
 	assert.NoError(suite.T(), err)
 
 	// Create announcer (stateless factory)
-	localService := api.NewServiceDetails("testski", "", "")
-	announcer := suite.sut.CreateAnnouncer(localService)
+	announcer := suite.sut.CreateAnnouncer()
 	assert.NotNil(suite.T(), announcer)
 
 	// Create and activate listener (Service still manages listener)
-	listener := suite.sut.CreateListener(localService)
+	listener := suite.sut.CreateListener()
 	assert.NotNil(suite.T(), listener)
 	concreteListener, ok := listener.(*PairingListener)
 	assert.True(suite.T(), ok)

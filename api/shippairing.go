@@ -22,12 +22,12 @@ type ShipPairingServiceInterface interface {
 	// CreateListener creates a new pairing listener instance for the specified local service.
 	// Used when this device acts as devA (target device) in SHIP pairing.
 	// Returns a configured listener ready to accept pairing requests.
-	CreateListener(localService *ServiceDetails) PairingListenerInterface
+	CreateListener() PairingListenerInterface
 
 	// CreateAnnouncer creates a new pairing announcer instance for the specified local service.
 	// Used when this device acts as devZ (requesting device) in SHIP pairing.
 	// Returns a configured announcer ready to send pairing requests.
-	CreateAnnouncer(localService *ServiceDetails) PairingAnnouncerInterface
+	CreateAnnouncer() PairingAnnouncerInterface
 
 	// IsServiceRunning returns whether the PairingService was started successfully and is currently running
 	IsServiceRunning() bool

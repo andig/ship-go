@@ -262,6 +262,7 @@ func (h *Hub) initializePairingServiceWithConfig(config *api.PairingConfig) erro
 		historyProvider, // Ring buffer history provider
 		h,               // Hub as PairingHubInterface
 		h.certificate,   // Certificate
+		h.localService.ShipID(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create pairing service: %w", err)
@@ -297,7 +298,7 @@ func (h *Hub) enablePairingListener(config *api.PairingConfig) error {
 		listener = h.activePairingListener
 	} else {
 		// Create new listener through pairing service
-		listener = h.pairingService.CreateListener(h.localService)
+		listener = h.pairingService.CreateListener()
 		if listener == nil {
 			return fmt.Errorf("failed to create pairing listener")
 		}
@@ -388,7 +389,7 @@ func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 	}
 
 	// Create announcer for this target
-	announcer := pairingService.CreateAnnouncer(h.localService)
+	announcer := pairingService.CreateAnnouncer()
 	if announcer == nil {
 		return fmt.Errorf("failed to create pairing announcer")
 	}

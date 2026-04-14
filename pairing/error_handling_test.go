@@ -280,6 +280,7 @@ func (suite *PairingErrorHandlingTestSuite) TestErrorRecoveryAndCleanup() {
 	service, err := NewService(
 		suite.mockMdns, suite.mockCrypto, suite.mockHistory,
 		suite.mockHub, suite.testCert,
+		suite.testService.ShipID(),
 	)
 	require.NoError(suite.T(), err)
 

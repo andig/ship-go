@@ -24,6 +24,8 @@ type Service struct {
 	// Local certificate (simplified design - no interface needed)
 	localCert *x509.Certificate
 
+	localService *api.ServiceDetails
+
 	// State management
 	running bool
 	mux     sync.RWMutex
@@ -37,6 +39,7 @@ func NewService(
 	history PairingHistoryProviderInterface,
 	hub api.PairingHubInterface,
 	certificate tls.Certificate,
+	shipID string,
 ) (*Service, error) {
 	// Extract X.509 certificate from TLS certificate
 	if len(certificate.Certificate) == 0 {
@@ -47,13 +50,18 @@ func NewService(
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
+	fingerprint, err := cert.FingerprintFromCertificate(x509Cert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
+	}
 
 	return &Service{
-		mdns:      mdns,
-		crypto:    crypto,
-		history:   history,
-		hub:       hub,
-		localCert: x509Cert,
+		mdns:         mdns,
+		crypto:       crypto,
+		history:      history,
+		hub:          hub,
+		localCert:    x509Cert,
+		localService: api.NewServiceDetails("", fingerprint, shipID),
 	}, nil
 }
 
@@ -113,7 +121,7 @@ func (s *Service) IsServiceRunning() bool {
 }
 
 // CreateAnnouncer creates a configured announcer component
-func (s *Service) CreateAnnouncer(localService *api.ServiceDetails) api.PairingAnnouncerInterface {
+func (s *Service) CreateAnnouncer() api.PairingAnnouncerInterface {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
@@ -122,11 +130,11 @@ func (s *Service) CreateAnnouncer(localService *api.ServiceDetails) api.PairingA
 	}
 
 	// Stateless factory: create and return new announcer (no tracking, no interference)
-	return NewPairingAnnouncer(s.mdns, s.crypto, s.localCert, s.history, localService)
+	return NewPairingAnnouncer(s.mdns, s.crypto, s.localCert, s.history, s.localService.Copy())
 }
 
 // CreateListener creates a configured listener component
-func (s *Service) CreateListener(localService *api.ServiceDetails) api.PairingListenerInterface {
+func (s *Service) CreateListener() api.PairingListenerInterface {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
@@ -136,15 +144,8 @@ func (s *Service) CreateListener(localService *api.ServiceDetails) api.PairingLi
 		_ = s.listener.StopListening()
 	}
 
-	// Ensure listener can validate forPar against the local certificate fingerprint.
-	if localService != nil && localService.Fingerprint() == "" && s.localCert != nil {
-		if fp, err := cert.FingerprintFromCertificate(s.localCert); err == nil {
-			localService.SetFingerprint(fp)
-		}
-	}
-
 	// Create and track the new listener
-	s.listener = NewPairingListener(s.mdns, s.crypto, s.history, s.hub, localService)
+	s.listener = NewPairingListener(s.mdns, s.crypto, s.history, s.hub, s.localService.Copy())
 
 	// Note: Pairing notifications happen through hub.OnPairingSuccess
 	// which calls the application's PairingServiceReaderInterface
