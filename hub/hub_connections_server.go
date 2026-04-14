@@ -59,11 +59,12 @@ func (h *Hub) startWebsocketServer() error {
 		Handler:           h,
 		ReadHeaderTimeout: time.Duration(time.Second * 10),
 		TLSConfig: &tls.Config{
-			Certificates:          []tls.Certificate{h.certificate},
-			ClientAuth:            tls.RequireAnyClientCert, // SHIP 9: Client authentication is required
-			CipherSuites:          cert.CipherSuites,        // #nosec G402 // SHIP 9.1: the ciphers are reported insecure but are defined to be used by SHIP
-			VerifyPeerCertificate: h.verifyPeerCertificate,
-			MinVersion:            tls.VersionTLS12, // SHIP 9: Mandatory TLS version
+			Certificates:           []tls.Certificate{h.certificate},
+			ClientAuth:             tls.RequireAnyClientCert, // SHIP 9: Client authentication is required
+			CipherSuites:           cert.CipherSuites,        // #nosec G402 // SHIP 9.1: the ciphers are reported insecure but are defined to be used by SHIP
+			VerifyPeerCertificate:  h.verifyPeerCertificate,
+			MinVersion:             tls.VersionTLS12, // SHIP 9: Mandatory TLS version
+			SessionTicketsDisabled: true,             // SHIP 9.6: Disable session resumption to prevent bypassing VerifyPeerCertificate
 		},
 	}
 

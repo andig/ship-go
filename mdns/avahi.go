@@ -82,6 +82,24 @@ func NewAvahiProvider(ifaceIndexes []int32) *AvahiProvider {
 	}
 }
 
+// UpdateInterfaces updates the interface indexes in a thread-safe manner.
+// AvahiProvider uses ifaceIndexes; ifaces is ignored.
+func (a *AvahiProvider) UpdateInterfaces(_ []net.Interface, ifaceIndexes []int32) {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+	a.ifaceIndexes = ifaceIndexes
+}
+
+// getIfaceIndexes returns a copy of the interface indexes in a thread-safe manner
+func (a *AvahiProvider) getIfaceIndexes() []int32 {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+	// Return a copy to avoid race conditions
+	indexesCopy := make([]int32, len(a.ifaceIndexes))
+	copy(indexesCopy, a.ifaceIndexes)
+	return indexesCopy
+}
+
 // AvahiProvider implements the standard MdnsProviderInterface
 // For multi-service support, wrap with MultiServiceAdapter
 var _ api.MdnsProviderInterface = (*AvahiProvider)(nil)
@@ -101,7 +119,16 @@ func (a *AvahiProvider) Start(pairingMode api.PairingMode, autoReconnect bool, c
 	}
 	a.setupSuccessful = true
 	if a.shutdownChan == nil {
-		a.shutdownChan = make(chan struct{})
+		// Buffered (capacity 1) so Shutdown()'s send below never blocks
+		// while holding a.mux. If chanListener is busy inside
+		// processService (e.g. parked in a dBus call like ResolveService,
+		// or contending for a.mux via getIfaceIndexes), an unbuffered
+		// send would create a lock/channel deadlock cycle: Shutdown holds
+		// a.mux and waits for the send to complete, while chanListener
+		// cannot return to its select to receive until it either finishes
+		// processService or acquires a.mux -- both of which Shutdown is
+		// blocking.
+		a.shutdownChan = make(chan struct{}, 1)
 	}
 	if a.addServiceChan == nil {
 		a.addServiceChan = make(chan avahi.Service)
@@ -147,7 +174,11 @@ func (a *AvahiProvider) Start(pairingMode api.PairingMode, autoReconnect bool, c
 
 	if !a.listenerRunning {
 		a.listenerRunning = true
-		go a.chanListener(cb)
+		// Capture channels for the goroutine so it does not read the
+		// provider fields directly. This avoids a data race with
+		// Shutdown() nilling a.shutdownChan / a.addServiceChan /
+		// a.removeServiceChan after closing them.
+		go a.chanListener(cb, a.shutdownChan, a.addServiceChan, a.removeServiceChan)
 	}
 
 	return true
@@ -243,9 +274,10 @@ func (a *AvahiProvider) avahiCallback(event avahi.Event) {
 		serviceData = a.mdnsServiceData
 	}
 
-	// Clear instanceEntryGroups as they are now invalid after disconnection
-	// but keep instanceStates for restoration
-	a.instanceEntryGroups = make(map[string]avahi.EntryGroupInterface)
+	// Keep instanceEntryGroups: the stale entry group objects will be freed in
+	// attemptReconnect after the new entry group is committed (create-then-swap).
+	// Freeing them here (before reconnect) would be premature and could race with
+	// the reconnect goroutine.
 
 	a.mux.Unlock()
 
@@ -314,34 +346,41 @@ func (a *AvahiProvider) attemptReconnect(cb api.MdnsResolveCB, serviceData *mdns
 		}
 		a.mux.Unlock()
 
+		// restoredShipServices tracks service names already re-announced for the
+		// legacy compatibility check below (keyed by service name).
+		restoredShipServices := make(map[string]bool)
+
 		for instanceID, serviceState := range statesToRestore {
-			// Get the correct service type from serviceInstances
+			// Capture service type before any map deletions below
 			serviceType := "_shippairing._tcp" // Default fallback
 			if instanceInfo, exists := a.serviceInstances[instanceID]; exists {
 				serviceType = instanceInfo.ServiceType
 			}
 			if _, err := a.AnnounceService(serviceType, serviceState.Name, serviceState.Port, serviceState.Txt); err != nil {
 				logging.Log().Debugf("mdns: avahi - error re-announcing service %s: %v", serviceState.Name, err)
+				continue
+			}
+			// create-then-swap: new entry group is now committed; release the stale
+			// (disconnected-server) entry group and remove the old instance ID.
+			// AnnounceService has already registered a new instance ID for this service.
+			a.mux.Lock()
+			if oldEG, ok := a.instanceEntryGroups[instanceID]; ok {
+				a.avServer.EntryGroupFree(oldEG)
+				delete(a.instanceEntryGroups, instanceID)
+			}
+			delete(a.instanceStates, instanceID)
+			delete(a.serviceInstances, instanceID)
+			a.mux.Unlock()
+
+			if serviceType == shipZeroConfServiceType {
+				restoredShipServices[serviceState.Name] = true
 			}
 		}
 
 		// Legacy compatibility: also restore from serviceData if available and not already restored
-		if serviceData != nil {
-			// Check if legacy service was already restored from instanceStates
-			alreadyRestored := false
-			for instanceID := range statesToRestore {
-				if instanceInfo, exists := a.serviceInstances[instanceID]; exists {
-					if instanceInfo.ServiceType == shipZeroConfServiceType && instanceInfo.ServiceName == serviceData.Name {
-						alreadyRestored = true
-						break
-					}
-				}
-			}
-
-			if !alreadyRestored {
-				if _, err := a.AnnounceService(shipZeroConfServiceType, serviceData.Name, serviceData.Port, serviceData.Txt); err != nil {
-					logging.Log().Debug("mdns: avahi - error re-announcing legacy service:", err)
-				}
+		if serviceData != nil && !restoredShipServices[serviceData.Name] {
+			if _, err := a.AnnounceService(shipZeroConfServiceType, serviceData.Name, serviceData.Port, serviceData.Txt); err != nil {
+				logging.Log().Debug("mdns: avahi - error re-announcing legacy service:", err)
 			}
 		}
 
@@ -349,17 +388,24 @@ func (a *AvahiProvider) attemptReconnect(cb api.MdnsResolveCB, serviceData *mdns
 	}
 }
 
-// listen to service changes and shutdown
-func (a *AvahiProvider) chanListener(cb api.MdnsResolveCB) {
+// listen to service changes and shutdown.
+// shutdownChan, addServiceChan and removeServiceChan are passed in so this
+// goroutine never reads the provider fields directly -- Shutdown() is free
+// to close and nil those fields without racing against this select.
+func (a *AvahiProvider) chanListener(
+	cb api.MdnsResolveCB,
+	shutdownChan chan struct{},
+	addServiceChan, removeServiceChan chan avahi.Service,
+) {
 	for {
 		select {
-		case <-a.shutdownChan:
+		case <-shutdownChan:
 			return
-		case service := <-a.addServiceChan:
+		case service := <-addServiceChan:
 			if err := a.processService(service, false, cb); err != nil {
 				logging.Log().Debug("mdns: avahi -", err)
 			}
-		case service := <-a.removeServiceChan:
+		case service := <-removeServiceChan:
 			if err := a.processService(service, true, cb); err != nil {
 				logging.Log().Debug("mdns: avahi -", err)
 			}
@@ -371,11 +417,13 @@ func (a *AvahiProvider) chanListener(cb api.MdnsResolveCB) {
 // as avahi returns a service per interface, we need to combine them
 func (a *AvahiProvider) processService(service avahi.Service, remove bool, cb api.MdnsResolveCB) error {
 	// check if the service is within the allowed list
+	// Get a thread-safe copy of interface indexes
+	ifaceIndexes := a.getIfaceIndexes()
 	allow := false
-	if len(a.ifaceIndexes) == 1 && a.ifaceIndexes[0] == avahi.InterfaceUnspec {
+	if len(ifaceIndexes) == 1 && ifaceIndexes[0] == avahi.InterfaceUnspec {
 		allow = true
 	} else {
-		for _, iface := range a.ifaceIndexes {
+		for _, iface := range ifaceIndexes {
 			if service.Interface == iface {
 				allow = true
 				break

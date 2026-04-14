@@ -72,6 +72,24 @@ func NewZeroconfProvider(ifaces []net.Interface) *ZeroconfProvider {
 	}
 }
 
+// UpdateInterfaces updates the interface list in a thread-safe manner.
+// ZeroconfProvider uses ifaces; ifaceIndexes is ignored.
+func (z *ZeroconfProvider) UpdateInterfaces(ifaces []net.Interface, _ []int32) {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	z.ifaces = ifaces
+}
+
+// getIfaces returns a copy of the interface list in a thread-safe manner
+func (z *ZeroconfProvider) getIfaces() []net.Interface {
+	z.mux.Lock()
+	defer z.mux.Unlock()
+	// Return a copy to avoid race conditions
+	ifacesCopy := make([]net.Interface, len(z.ifaces))
+	copy(ifacesCopy, z.ifaces)
+	return ifacesCopy
+}
+
 // ZeroconfProvider implements the standard MdnsProviderInterface
 // For multi-service support, wrap with MultiServiceAdapter
 var _ api.MdnsProviderInterface = (*ZeroconfProvider)(nil)
@@ -85,6 +103,9 @@ func (z *ZeroconfProvider) Start(pairingMode api.PairingMode, autoReconnect bool
 	}
 	z.isStarted = true
 	z.listenerDone = make(chan struct{})
+	// Create the context here, under the lock, so Shutdown() can always cancel
+	// it even if the goroutine hasn't started running yet.
+	z.ctx, z.cancel = context.WithCancel(context.Background())
 	z.mux.Unlock()
 
 	go z.chanListener(pairingMode, cb)
@@ -130,27 +151,28 @@ func (z *ZeroconfProvider) Shutdown() {
 }
 
 /* Enhanced Provider Interface Implementation - TDD Stubs */
-
 // AnnounceService announces a specific service type and returns an instance ID
 func (z *ZeroconfProvider) AnnounceService(serviceType, serviceName string, port int, txt []string) (string, error) {
-	z.mux.Lock()
-	defer z.mux.Unlock()
-
 	// Determine domain based on service type
 	domain := "local."
 	if serviceType == shipZeroConfServiceType {
 		domain = shipZeroConfDomain
 	}
-
+	z.mux.Lock()
 	// Generate unique instance ID first
 	z.instanceCounter++
 	instanceID := strconv.Itoa(z.instanceCounter)
+	z.mux.Unlock()
 
 	// Create dedicated server for this specific instance
-	server, err := z.serverFactory.Register(serviceName, serviceType, domain, port, txt, z.ifaces)
+	ifaces := z.getIfaces()
+	server, err := z.serverFactory.Register(serviceName, serviceType, domain, port, txt, ifaces)
 	if err != nil {
 		return "", fmt.Errorf("failed to register %s service: %w", serviceType, err)
 	}
+
+	z.mux.Lock()
+	defer z.mux.Unlock()
 
 	// Store dedicated server for this instance - no sharing
 	z.instanceServers[instanceID] = server
@@ -190,12 +212,17 @@ func (z *ZeroconfProvider) UnannounceService(instanceID string) error {
 }
 
 func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.MdnsResolveCB) {
+	// Capture the done channel and context that belong to THIS goroutine's lifecycle.
+	// Doing this at entry (not inside the defer) ensures that even if a concurrent
+	// Shutdown()+Start() replaces z.listenerDone or z.ctx, we always signal the right
+	// channel and listen to the right context — preventing a double-close panic.
+	z.mux.Lock()
+	myDone := z.listenerDone
+	myCtx := z.ctx
+	z.mux.Unlock()
+
 	defer func() {
-		z.mux.Lock()
-		if z.listenerDone != nil {
-			close(z.listenerDone)
-		}
-		z.mux.Unlock()
+		close(myDone)
 	}()
 
 	// Buffered channels prevent the Browse goroutine from deadlocking on shutdown.
@@ -210,25 +237,23 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 	zcPairingEntries := make(chan *zeroconf.ServiceEntry, 2)
 	zcPairingRemoved := make(chan *zeroconf.ServiceEntry, 2)
 
-	z.mux.Lock()
-	z.ctx, z.cancel = context.WithCancel(context.Background())
-	z.mux.Unlock()
-
 	// Browse for _ship._tcp services
+	// Get a thread-safe copy of interfaces
+	ifaces := z.getIfaces()
 	go func() {
-		_ = zeroconf.Browse(z.ctx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(z.ifaces))
+		_ = zeroconf.Browse(myCtx, shipZeroConfServiceType, shipZeroConfDomain, zcEntries, zcRemoved, zeroconf.SelectIfaces(ifaces))
 	}()
 
 	// Also browse for _shippairing._tcp services
 	if pairingMode == api.PairingModeListener || pairingMode == api.PairingModeBoth {
 		go func() {
-			_ = zeroconf.Browse(z.ctx, shipPairingZeroConfServiceType, shipZeroConfDomain, zcPairingEntries, zcPairingRemoved, zeroconf.SelectIfaces(z.ifaces))
+			_ = zeroconf.Browse(myCtx, shipPairingZeroConfServiceType, shipZeroConfDomain, zcPairingEntries, zcPairingRemoved, zeroconf.SelectIfaces(ifaces))
 		}()
 	}
 
 	for {
 		select {
-		case <-z.ctx.Done():
+		case <-myCtx.Done():
 			return
 		case service := <-zcRemoved:
 			// Zeroconf has issues with merging mDNS data and sometimes reports incomplete records

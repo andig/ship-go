@@ -310,6 +310,8 @@ func (a *AvahiSuite) Test_Avahi_Reconnect() {
 	a.avahiMock.EXPECT().EntryGroupNew().Return(a.entryGroupMock, nil).Once()
 	a.entryGroupMock.EXPECT().AddService(mock.Anything, mock.Anything, mock.Anything, "dummytest", shipZeroConfServiceType, shipZeroConfDomain, "", mock.Anything, mock.Anything).Return(nil).Once()
 	a.entryGroupMock.EXPECT().Commit().Return(nil).Once()
+	// Announce now frees the old entry group after committing the new one (create-then-swap)
+	a.avahiMock.EXPECT().EntryGroupFree(a.entryGroupMock).Return().Once()
 	a.sut.avahiCallback(avahi.Disconnected)
 
 	// wait, as the cb will be invoked async
