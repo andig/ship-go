@@ -257,12 +257,12 @@ func (s *MultiplePairingIntegrationSuite) Test_SelectiveUnannouncement_InstanceS
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(), "Should still have active pairing services")
 
 	// Verify instance is removed from internal state
-	s.sut.pairingInstancesMux.RLock()
-	_, exists := s.sut.pairingInstances[instanceID2]
+	s.sut.announcedPairingsMux.RLock()
+	_, exists := s.sut.announcedPairings[instanceID2]
 	assert.False(s.T(), exists, "Removed instance should not exist in internal state")
-	_, exists1 := s.sut.pairingInstances[instanceID1]
+	_, exists1 := s.sut.announcedPairings[instanceID1]
 	assert.True(s.T(), exists1, "First instance should still exist")
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RUnlock()
 }
 
 func (s *MultiplePairingIntegrationSuite) Test_InstanceCounter_FirstInstanceBaseName() {
@@ -291,8 +291,9 @@ func (s *MultiplePairingIntegrationSuite) Test_InstanceCounter_FirstInstanceBase
 		instanceID, err := s.sut.AnnouncePairingService(txtRecord)
 		assert.NoError(s.T(), err)
 
-		// Verify instance ID is provider's format and incremental
-		expectedID := fmt.Sprintf("instance-%d", i+1)
+		// Verify the returned logical ID is stable and incremental.
+		// It is NOT the provider's instance ID — it is the manager-assigned logical ID.
+		expectedID := strconv.Itoa(i + 1)
 		assert.Equal(s.T(), expectedID, instanceID, "Instance ID should be incremental: %d", i+1)
 	}
 
@@ -385,9 +386,9 @@ func (s *MultiplePairingIntegrationSuite) Test_ThreadSafety_ConcurrentAnnounceme
 	}
 
 	// Verify internal state is consistent
-	s.sut.pairingInstancesMux.RLock()
-	internalCount := len(s.sut.pairingInstances)
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RLock()
+	internalCount := len(s.sut.announcedPairings)
+	s.sut.announcedPairingsMux.RUnlock()
 
 	assert.Equal(s.T(), totalAnnouncements, internalCount,
 		"Internal state should match number of successful announcements")
@@ -496,12 +497,12 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(), "Should be announced after first service")
 
 	// Verify internal state
-	s.sut.pairingInstancesMux.RLock()
-	assert.Len(s.T(), s.sut.pairingInstances, 1, "Should have 1 instance internally")
-	storedRecord1, exists1 := s.sut.pairingInstances[instanceID1]
+	s.sut.announcedPairingsMux.RLock()
+	assert.Len(s.T(), s.sut.announcedPairings, 1, "Should have 1 instance internally")
+	storedRecord1, exists1 := s.sut.announcedPairings[instanceID1]
 	assert.True(s.T(), exists1, "First instance should exist in internal state")
-	assert.Equal(s.T(), txtRecord1.ForId, storedRecord1.ForId, "Stored record should match original")
-	s.sut.pairingInstancesMux.RUnlock()
+	assert.Equal(s.T(), txtRecord1.ForId, storedRecord1.txtRecord.ForId, "Stored record should match original")
+	s.sut.announcedPairingsMux.RUnlock()
 
 	// Announce second service
 	instanceID2, err := s.sut.AnnouncePairingService(txtRecord2)
@@ -512,12 +513,12 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(), "Should still be announced after second service")
 
 	// Verify internal state has both
-	s.sut.pairingInstancesMux.RLock()
-	assert.Len(s.T(), s.sut.pairingInstances, 2, "Should have 2 instances internally")
-	storedRecord2, exists2 := s.sut.pairingInstances[instanceID2]
+	s.sut.announcedPairingsMux.RLock()
+	assert.Len(s.T(), s.sut.announcedPairings, 2, "Should have 2 instances internally")
+	storedRecord2, exists2 := s.sut.announcedPairings[instanceID2]
 	assert.True(s.T(), exists2, "Second instance should exist in internal state")
-	assert.Equal(s.T(), txtRecord2.ForId, storedRecord2.ForId, "Stored record should match original")
-	s.sut.pairingInstancesMux.RUnlock()
+	assert.Equal(s.T(), txtRecord2.ForId, storedRecord2.txtRecord.ForId, "Stored record should match original")
+	s.sut.announcedPairingsMux.RUnlock()
 
 	// Remove first service
 	s.T().Logf("Attempting to unannounce first instance ID: %s", instanceID1)
@@ -528,13 +529,13 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(), "Should still be announced with one service remaining")
 
 	// Verify internal state updated correctly
-	s.sut.pairingInstancesMux.RLock()
-	assert.Len(s.T(), s.sut.pairingInstances, 1, "Should have 1 instance after removal")
-	_, exists1After := s.sut.pairingInstances[instanceID1]
+	s.sut.announcedPairingsMux.RLock()
+	assert.Len(s.T(), s.sut.announcedPairings, 1, "Should have 1 instance after removal")
+	_, exists1After := s.sut.announcedPairings[instanceID1]
 	assert.False(s.T(), exists1After, "First instance should be removed from internal state")
-	_, exists2After := s.sut.pairingInstances[instanceID2]
+	_, exists2After := s.sut.announcedPairings[instanceID2]
 	assert.True(s.T(), exists2After, "Second instance should remain in internal state")
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RUnlock()
 
 	// Remove second service
 	s.T().Logf("Attempting to unannounce second instance ID: %s", instanceID2)
@@ -545,9 +546,9 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 	assert.False(s.T(), s.sut.IsPairingServiceAnnounced(), "Should not be announced after all services removed")
 
 	// Verify internal state empty
-	s.sut.pairingInstancesMux.RLock()
-	assert.Len(s.T(), s.sut.pairingInstances, 0, "Should have no instances after all removed")
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RLock()
+	assert.Len(s.T(), s.sut.announcedPairings, 0, "Should have no instances after all removed")
+	s.sut.announcedPairingsMux.RUnlock()
 }
 
 func (s *MultiplePairingIntegrationSuite) Test_CompleteScenario_AnnouncerMode() {
@@ -650,13 +651,13 @@ func (s *MultiplePairingIntegrationSuite) Test_CompleteScenario_AnnouncerMode() 
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(), "Should still be announced with remaining services")
 
 	// Verify internal state
-	s.sut.pairingInstancesMux.RLock()
-	remainingInstances := len(s.sut.pairingInstances)
-	_, hasA := s.sut.pairingInstances[instanceIDs[0]]
-	_, hasB := s.sut.pairingInstances[instanceIDs[1]]
-	_, hasC := s.sut.pairingInstances[instanceIDs[2]]
-	_, hasD := s.sut.pairingInstances[instanceIDs[3]]
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RLock()
+	remainingInstances := len(s.sut.announcedPairings)
+	_, hasA := s.sut.announcedPairings[instanceIDs[0]]
+	_, hasB := s.sut.announcedPairings[instanceIDs[1]]
+	_, hasC := s.sut.announcedPairings[instanceIDs[2]]
+	_, hasD := s.sut.announcedPairings[instanceIDs[3]]
+	s.sut.announcedPairingsMux.RUnlock()
 
 	assert.Equal(s.T(), 2, remainingInstances, "Should have 2 remaining instances")
 	assert.False(s.T(), hasA, "Heat Pump A instance should be removed")
@@ -668,9 +669,9 @@ func (s *MultiplePairingIntegrationSuite) Test_CompleteScenario_AnnouncerMode() 
 	s.T().Log("Step 6: Final verification - instance counter consistency")
 
 	// Verify instance counter maintained consistency throughout
-	s.sut.pairingInstancesMux.RLock()
+	s.sut.announcedPairingsMux.RLock()
 	currentCounter := s.sut.instanceCounter
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RUnlock()
 
 	assert.Equal(s.T(), 4, currentCounter, "Instance counter should reflect total announcements made")
 

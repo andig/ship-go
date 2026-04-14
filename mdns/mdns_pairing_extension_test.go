@@ -145,14 +145,16 @@ func (suite *MdnsPairingExtensionTestSuite) TestAnnouncePairingService_DoesNotRe
 
 	instanceID1, err := suite.sut.AnnouncePairingService(txtRecord)
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "provider-instance-id-1", instanceID1)
+	// AnnouncePairingService now returns a stable logical ID, not the provider instance ID.
+	assert.NotEmpty(suite.T(), instanceID1)
 
 	err = suite.sut.UnannouncePairingService(instanceID1)
 	assert.NoError(suite.T(), err)
 
 	instanceID2, err := suite.sut.AnnouncePairingService(txtRecord)
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "provider-instance-id-2", instanceID2)
+	assert.NotEmpty(suite.T(), instanceID2)
+	assert.NotEqual(suite.T(), instanceID1, instanceID2, "second announcement must have a distinct logical ID")
 }
 
 func (suite *MdnsPairingExtensionTestSuite) TestSearchPairingServices() {

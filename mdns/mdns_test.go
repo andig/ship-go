@@ -1669,7 +1669,7 @@ func (s *MdnsSuite) Test_UnannouncePairingService_InstanceNotFound() {
 	// Try to unannounce a non-existent instance
 	err := s.sut.UnannouncePairingService("999")
 	assert.NotNil(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "instance ID 999 not found")
+	assert.Contains(s.T(), err.Error(), "999 not found")
 }
 
 func (s *MdnsSuite) Test_UnannouncePairingService_ProviderUnannounceFailure() {
@@ -1866,9 +1866,9 @@ func (s *MdnsSuite) Test_ProcessShipPairingMdnsEntry_InvalidTxtvers() {
 	s.sut.processShipPairingMdnsEntry(elements, serviceName, false)
 
 	// Verify no pairing entry was created (function returned early due to invalid txtvers)
-	s.sut.pairingInstancesMux.RLock()
-	pairingCount := len(s.sut.pairingInstances)
-	s.sut.pairingInstancesMux.RUnlock()
+	s.sut.announcedPairingsMux.RLock()
+	pairingCount := len(s.sut.announcedPairings)
+	s.sut.announcedPairingsMux.RUnlock()
 
 	assert.Equal(s.T(), 0, pairingCount, "No pairing entry should be created with invalid txtvers")
 }
@@ -1964,11 +1964,16 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PairingReannouncement() {
 		4729, nil, MdnsProviderSelectionAll)
 	s.sut.SetMdnsProvider(provider)
 
-	// Pre-populate pairingInstances — these are OUR announced pairing services
+	// Simulate state that AnnouncePairingService would produce: one logical entry
+	// with a stable service name and the current provider-side instance ID.
 	txtRecord := validPairingTXTRecord()
-	s.sut.pairingInstancesMux.Lock()
-	s.sut.pairingInstances["old-pairing-id"] = txtRecord
-	s.sut.pairingInstancesMux.Unlock()
+	s.sut.announcedPairingsMux.Lock()
+	s.sut.announcedPairings["logical-1"] = &announcedPairing{
+		serviceName: "serviceName-pairing#1",
+		txtRecord:   txtRecord,
+		providerID:  "old-pairing-id",
+	}
+	s.sut.announcedPairingsMux.Unlock()
 
 	// Pre-populate pairingEntries — these are DISCOVERED remote services; must not be re-announced
 	s.sut.pairingEntries["discovered-remote"] = &api.ShipPairingTXT{
@@ -1981,16 +1986,19 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PairingReannouncement() {
 
 	s.sut.reannounceWithNewInterfaces()
 
-	// After re-announcement: new ID present, old ID gone
-	s.sut.pairingInstancesMux.RLock()
-	_, hasOld := s.sut.pairingInstances["old-pairing-id"]
-	_, hasNew := s.sut.pairingInstances["new-pairing-id"]
-	count := len(s.sut.pairingInstances)
-	s.sut.pairingInstancesMux.RUnlock()
+	// After re-announcement: the logical entry must still exist but the provider ID is updated.
+	s.sut.announcedPairingsMux.RLock()
+	entry, hasEntry := s.sut.announcedPairings["logical-1"]
+	var updatedProviderID string
+	if hasEntry {
+		updatedProviderID = entry.providerID
+	}
+	count := len(s.sut.announcedPairings)
+	s.sut.announcedPairingsMux.RUnlock()
 
-	assert.False(s.T(), hasOld, "old pairing instance should be removed after create-then-swap")
-	assert.True(s.T(), hasNew, "new pairing instance should be present after re-announcement")
-	assert.Equal(s.T(), 1, count, "pairingInstances should have exactly one entry after re-announcement")
+	assert.True(s.T(), hasEntry, "logical entry should persist across re-announcement")
+	assert.Equal(s.T(), "new-pairing-id", updatedProviderID, "provider ID should be updated to the new instance")
+	assert.Equal(s.T(), 1, count, "announcedPairings should still have exactly one entry")
 
 	// Discovered remote entries must be untouched
 	assert.Contains(s.T(), s.sut.pairingEntries, "discovered-remote",
@@ -2015,12 +2023,13 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces_WithPairing() 
 
 	s.sut.SetMdnsProvider(provider)
 
-	// Pre-populate two pairing instances
+	// Simulate state that AnnouncePairingService would produce: two logical entries
+	// each with a stable service name and a current provider-side instance ID.
 	txtRecord := validPairingTXTRecord()
-	s.sut.pairingInstancesMux.Lock()
-	s.sut.pairingInstances["p1"] = txtRecord
-	s.sut.pairingInstances["p2"] = txtRecord
-	s.sut.pairingInstancesMux.Unlock()
+	s.sut.announcedPairingsMux.Lock()
+	s.sut.announcedPairings["1"] = &announcedPairing{serviceName: "serviceName-pairing#1", txtRecord: txtRecord, providerID: "p1"}
+	s.sut.announcedPairings["2"] = &announcedPairing{serviceName: "serviceName-pairing#2", txtRecord: txtRecord, providerID: "p2"}
+	s.sut.announcedPairingsMux.Unlock()
 
 	// Mark SHIP service as announced so the wasAnnounced path is exercised.
 	// Note: reannounceWithNewInterfaces sets isAnnounced=false before calling
@@ -2031,11 +2040,20 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces_WithPairing() 
 
 	s.sut.reannounceWithNewInterfaces()
 
-	// All pairing instances must be cleaned up when no interfaces are available
-	s.sut.pairingInstancesMux.RLock()
-	remaining := len(s.sut.pairingInstances)
-	s.sut.pairingInstancesMux.RUnlock()
+	// Logical entries must be preserved (caller-held IDs remain valid).
+	// Provider IDs are cleared (marked as not currently live on the provider).
+	s.sut.announcedPairingsMux.RLock()
+	count := len(s.sut.announcedPairings)
+	p1ProviderID := s.sut.announcedPairings["1"].providerID
+	p2ProviderID := s.sut.announcedPairings["2"].providerID
+	s.sut.announcedPairingsMux.RUnlock()
 
-	assert.Equal(s.T(), 0, remaining, "all pairing instances should be removed when no interfaces are available")
-	assert.False(s.T(), s.sut.IsPairingServiceAnnounced(), "IsPairingServiceAnnounced should be false when no instances remain")
+	assert.Equal(s.T(), 2, count, "logical pairing entries should be preserved when no interfaces available")
+	assert.Equal(s.T(), "", p1ProviderID, "provider ID should be cleared when no interfaces available")
+	assert.Equal(s.T(), "", p2ProviderID, "provider ID should be cleared when no interfaces available")
+
+	// IsPairingServiceAnnounced remains true because the logical entries still exist
+	// and will be re-announced when interfaces reappear.
+	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(),
+		"IsPairingServiceAnnounced should remain true: logical entries are preserved for later re-announcement")
 }

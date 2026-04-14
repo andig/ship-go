@@ -46,6 +46,15 @@ func DefaultProviderFactory() *ProviderFactory {
 	}
 }
 
+// announcedPairing holds the full state for one announced _shippairing._tcp service.
+// The logicalID (the map key in announcedPairings) is stable and returned to callers.
+// providerID is transient and updated transparently when interfaces change.
+type announcedPairing struct {
+	serviceName string               // mDNS service name — stable across re-announcements
+	txtRecord   *api.ShipPairingTXT  // TXT record data
+	providerID  string               // current provider-side instance ID (changes on re-announcement)
+}
+
 type MdnsManager struct {
 	// The certificates SKI
 	ski string
@@ -87,10 +96,16 @@ type MdnsManager struct {
 	isAnnounced        bool // State for _ship._tcp service
 	isPairingAnnounced bool // State for _shippairing._tcp service
 
-	// Multiple pairing instance tracking
-	pairingInstances    map[string]*api.ShipPairingTXT // instanceID -> txtRecord
-	pairingInstancesMux sync.RWMutex
-	instanceCounter     int
+	// announcedPairings tracks all pairing services this device has announced.
+	// The map key is a stable logical ID returned to — and held by — callers.
+	// Callers use this logical ID to stop an announcement via UnannouncePairingService.
+	//
+	// The logical ID never changes across interface-change re-announcements.
+	// Only the internal providerID field changes when a new provider instance is
+	// created during re-announcement. This keeps caller-held IDs valid indefinitely.
+	announcedPairings    map[string]*announcedPairing
+	announcedPairingsMux sync.RWMutex
+	instanceCounter       int // monotonic counter for stable logical ID and service name generation
 
 	// the currently available mDNS entries with the serviceName as the key in the map
 	entries map[string]*api.MdnsEntry
@@ -172,8 +187,8 @@ func NewMDNS(
 		providerSelection: providerSelection,
 		entries:           make(map[string]*api.MdnsEntry),
 		pairingEntries:    make(map[string]*api.ShipPairingTXT),
-		pairingInstances:  make(map[string]*api.ShipPairingTXT),
-		instanceCounter:   0,
+		announcedPairings: make(map[string]*announcedPairing),
+		instanceCounter:    0,
 		providerFactory:   DefaultProviderFactory(),
 	}
 
@@ -497,15 +512,14 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 				m.UnannounceMdnsEntry()
 			}
 			if pairingWasAnnounced {
-				m.pairingInstancesMux.RLock()
-				oldPairingIDs := make([]string, 0, len(m.pairingInstances))
-				for instanceID := range m.pairingInstances {
-					oldPairingIDs = append(oldPairingIDs, instanceID)
+				// Tear down provider-side instances only. announcedPairings (the logical entries)
+				// are preserved so services are re-announced when interfaces reappear.
+				m.announcedPairingsMux.Lock()
+				for _, entry := range m.announcedPairings {
+					_ = m.mdnsProvider.UnannounceService(entry.providerID)
+					entry.providerID = "" // mark as not currently active
 				}
-				m.pairingInstancesMux.RUnlock()
-				for _, instanceID := range oldPairingIDs {
-					m.UnannouncePairingService(instanceID)
-				}
+				m.announcedPairingsMux.Unlock()
 			}
 			return
 		}
@@ -524,28 +538,27 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 		return
 	}
 
-	// Re-announce all pairing service instances with updated interfaces.
-	// Collect old instance IDs first (create-then-swap: new announcement goes up before
-	// the old one is torn down, avoiding mDNS goodbye packets).
-	m.pairingInstancesMux.RLock()
-	type pairingInstance struct {
-		instanceID string
-		txt        *api.ShipPairingTXT
-	}
-	oldPairingInstances := make([]pairingInstance, 0, len(m.pairingInstances))
-	for instanceID, txt := range m.pairingInstances {
-		oldPairingInstances = append(oldPairingInstances, pairingInstance{instanceID, txt})
-	}
-	m.pairingInstancesMux.RUnlock()
-
-	for _, instance := range oldPairingInstances {
-		if _, err := m.AnnouncePairingService(instance.txt); err != nil {
-			logging.Log().Debug("mdns: pairing announcement failed:", err)
+	// Re-announce all pairing services with the updated interface list.
+	// announcedPairings is the authoritative source: logical IDs are stable, service names
+	// are reused (remote devices see the same service), only the internal provider ID changes.
+	//
+	// Create-then-swap: new provider instance is live before the old one is torn down.
+	m.announcedPairingsMux.Lock()
+	for _, entry := range m.announcedPairings {
+		txtArray := m.convertPairingTXTToArray(entry.txtRecord)
+		newProviderID, err := m.mdnsProvider.AnnounceService(shipPairingZeroConfServiceType, entry.serviceName, m.port, txtArray)
+		if err != nil {
+			m.announcedPairingsMux.Unlock()
+			logging.Log().Debug("mdns: pairing re-announcement failed:", err)
 			return
 		}
-		// New announcement is live; now tear down the old provider instance.
-		m.UnannouncePairingService(instance.instanceID)
+		oldProviderID := entry.providerID
+		entry.providerID = newProviderID // atomic swap under lock
+		if oldProviderID != "" {
+			_ = m.mdnsProvider.UnannounceService(oldProviderID)
+		}
 	}
+	m.announcedPairingsMux.Unlock()
 
 	if !wasAnnounced {
 		logging.Log().Info("mdns: successfully made first announcement")
@@ -1319,12 +1332,14 @@ func (m *MdnsManager) initializeZeroconfProvider(ifaces []net.Interface, autoRec
 
 /* SHIP Pairing Service Extension - TDD Stubs */
 
-// AnnouncePairingService announces _shippairing._tcp service (implements MdnsPairingInterface)
+// AnnouncePairingService announces _shippairing._tcp service (implements MdnsPairingInterface).
+//
+// Returns a stable logical ID. The caller must hold this ID and pass it to
+// UnannouncePairingService to stop the announcement. The logical ID remains valid
+// across interface-change re-announcements — the manager transparently replaces the
+// underlying provider instance without invalidating caller-held IDs.
 func (m *MdnsManager) AnnouncePairingService(txtRecord *api.ShipPairingTXT) (string, error) {
-	// Get active provider (testProvider takes precedence for testing)
 	provider := m.mdnsProvider
-
-	// Critical validation
 	if provider == nil {
 		logging.Log().Debug("mdns: AnnouncePairingService - no provider available")
 		return "", fmt.Errorf("cannot announce pairing service: no provider available")
@@ -1338,66 +1353,60 @@ func (m *MdnsManager) AnnouncePairingService(txtRecord *api.ShipPairingTXT) (str
 		return "", fmt.Errorf("invalid TXT record: %w", err)
 	}
 
-	// Generate unique service name
-	m.pairingInstancesMux.Lock()
+	// Generate stable logical ID and a matching mDNS service name.
+	// Both are based on the same counter so the service name is deterministic
+	// and reused on re-announcement (avoids remote devices seeing a new service).
+	m.announcedPairingsMux.Lock()
 	m.instanceCounter++
-	// Generate service name following SHIP-compliant naming
-	// All instances use #N suffix, starting from #1 (per interface test requirements)
-	serviceName := m.serviceName + "-pairing#" + strconv.Itoa(m.instanceCounter)
-	m.pairingInstancesMux.Unlock()
+	logicalID := strconv.Itoa(m.instanceCounter)
+	serviceName := m.serviceName + "-pairing#" + logicalID
+	m.announcedPairingsMux.Unlock()
 
-	// Convert ShipPairingTXT to string array
 	txtArray := m.convertPairingTXTToArray(txtRecord)
 
-	// Use provider's enhanced AnnounceService method
-	// Use the same port as the SHIP server (m.port) since pairing connects to the same WebSocket endpoint
-	providerInstanceID, err := m.mdnsProvider.AnnounceService(shipPairingZeroConfServiceType, serviceName, m.port, txtArray)
+	providerID, err := provider.AnnounceService(shipPairingZeroConfServiceType, serviceName, m.port, txtArray)
 	if err != nil {
 		logging.Log().Debug("mdns: AnnouncePairingService - provider.AnnounceService failed:", err)
 		return "", fmt.Errorf("failed to announce pairing service: %w", err)
 	}
 
-	// Store instance using provider's actual instance ID for proper cleanup
-	m.pairingInstancesMux.Lock()
-	m.pairingInstances[providerInstanceID] = txtRecord
-	m.pairingInstancesMux.Unlock()
+	m.announcedPairingsMux.Lock()
+	m.announcedPairings[logicalID] = &announcedPairing{
+		serviceName: serviceName,
+		txtRecord:   txtRecord,
+		providerID:  providerID,
+	}
+	m.announcedPairingsMux.Unlock()
 
-	// Update state tracking after successful announcement
 	m.setIsPairingServiceAnnounced(true)
-
-	// Return provider's instance ID so it can be used for cleanup
-	return providerInstanceID, nil
+	return logicalID, nil
 }
 
-// UnannouncePairingService removes _shippairing._tcp announcement (implements MdnsPairingInterface)
-func (m *MdnsManager) UnannouncePairingService(providerInstanceID string) error {
-	// Get active provider (testProvider takes precedence for testing)
+// UnannouncePairingService removes a _shippairing._tcp announcement (implements MdnsPairingInterface).
+// logicalID is the value returned by AnnouncePairingService; it remains valid even after
+// interface-change re-announcements.
+func (m *MdnsManager) UnannouncePairingService(logicalID string) error {
 	provider := m.mdnsProvider
 	if provider == nil {
 		return api.ErrPairingNotActive
 	}
 
-	// Validate providerInstanceID and remove from instances map
-	m.pairingInstancesMux.Lock()
-	_, exists := m.pairingInstances[providerInstanceID]
+	m.announcedPairingsMux.Lock()
+	entry, exists := m.announcedPairings[logicalID]
 	if !exists {
-		m.pairingInstancesMux.Unlock()
-		return fmt.Errorf("provider instance ID %s not found", providerInstanceID)
+		m.announcedPairingsMux.Unlock()
+		return fmt.Errorf("pairing logical ID %s not found", logicalID)
 	}
-	delete(m.pairingInstances, providerInstanceID)
-	m.pairingInstancesMux.Unlock()
+	providerID := entry.providerID
+	delete(m.announcedPairings, logicalID)
+	remaining := len(m.announcedPairings)
+	m.announcedPairingsMux.Unlock()
 
-	// Use provider's enhanced UnannounceService method with provider's own instance ID
-	if err := provider.UnannounceService(providerInstanceID); err != nil {
+	if err := provider.UnannounceService(providerID); err != nil {
 		return err
 	}
 
-	// Update state tracking - only set to false if no instances remain
-	m.pairingInstancesMux.RLock()
-	hasInstances := len(m.pairingInstances) > 0
-	m.pairingInstancesMux.RUnlock()
-
-	if !hasInstances {
+	if remaining == 0 {
 		m.setIsPairingServiceAnnounced(false)
 	}
 	return nil
@@ -1461,12 +1470,15 @@ func (m *MdnsManager) RequestPairingEntries() (map[string]*api.ShipPairingTXT, e
 	return result, nil
 }
 
-// IsPairingServiceAnnounced checks if pairing service is currently announced (implements MdnsPairingInterface)
+// IsPairingServiceAnnounced returns true if at least one pairing service has been announced
+// and not yet unannounced. Returns true even during interface-loss events when the provider-side
+// announcement is temporarily down, because the logical entry still exists and will be
+// re-announced when interfaces reappear.
 func (m *MdnsManager) IsPairingServiceAnnounced() bool {
-	m.pairingInstancesMux.RLock()
-	hasInstances := len(m.pairingInstances) > 0
-	m.pairingInstancesMux.RUnlock()
-	return hasInstances
+	m.announcedPairingsMux.RLock()
+	has := len(m.announcedPairings) > 0
+	m.announcedPairingsMux.RUnlock()
+	return has
 }
 
 // setIsPairingServiceAnnounced updates pairing service announcement state (internal helper)
