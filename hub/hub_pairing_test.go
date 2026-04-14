@@ -1761,7 +1761,7 @@ func (suite *QRAnnouncementTestSuite) SetupTest() {
 		Secret: []byte("0123456789abcdef"),
 	}
 
-	localService := api.NewServiceDetails("testlocalski", "", "")
+	localService := api.NewServiceDetails("testlocalski", "", "testshipid")
 
 	// Create a proper test certificate
 	certificate, err := cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
@@ -2030,7 +2030,7 @@ func (s *AutoPairingTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Create Hub instance for testing
-	localService := api.NewServiceDetails("localski", "", "")
+	localService := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
 	s.hub, err = newTestHub(s.mockReader, s.mockMdns, 0, certificate, localService, nil)
 	require.NoError(s.T(), err)
 }
@@ -2084,7 +2084,7 @@ func (s *AutoPairingImplementationTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Create Hub instance for testing
-	localService := api.NewServiceDetails("localski", "", "")
+	localService := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
 	s.hub, err = newTestHub(s.mockReader, s.mockMdns, 0, certificate, localService, nil)
 	require.NoError(s.T(), err)
 }
@@ -2572,8 +2572,8 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ThreadSaf
 
 	// Setup expectations for listener reuse behavior:
 	// First call creates listener, subsequent calls reuse it
-	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Times(1) // Only first call creates
-	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Times(3)        // All calls start listening
+	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Times(1)            // Only first call creates
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Times(3) // All calls start listening
 
 	// Act: Call enablePairingListener from multiple goroutines
 	var wg sync.WaitGroup
@@ -2598,23 +2598,24 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ThreadSaf
 /* Behavior Verification Tests */
 
 func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_PassesCorrectParameters() {
-	// Test that function passes correct parameters to CreateListener and StartListening
-
 	suite.sut.pairingService = suite.mockPairingService
 
-	// Capture parameters passed to mocked methods
-	var capturedService *api.ServiceDetails
 	var capturedContext context.Context
 	var capturedSecret api.PairingSecret
 
-	suite.mockPairingService.EXPECT().CreateListener().Return(suite.mockListener).Once().Run(func(args mock.Arguments) {
-		capturedService = args.Get(0).(*api.ServiceDetails)
-	})
+	suite.mockPairingService.EXPECT().
+		CreateListener().
+		Return(suite.mockListener).
+		Once()
 
-	suite.mockListener.EXPECT().StartListening(mock.Anything, mock.Anything).Return(nil).Once().Run(func(args mock.Arguments) {
-		capturedContext = args.Get(0).(context.Context)
-		capturedSecret = args.Get(1).(api.PairingSecret)
-	})
+	suite.mockListener.EXPECT().
+		StartListening(mock.Anything, mock.Anything).
+		Return(nil).
+		Once().
+		Run(func(args mock.Arguments) {
+			capturedContext = args.Get(0).(context.Context)
+			capturedSecret = args.Get(1).(api.PairingSecret)
+		})
 
 	// Act
 	err := suite.sut.enablePairingListener(suite.validConfig)
@@ -2622,12 +2623,8 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_PassesCor
 	// Assert
 	assert.NoError(suite.T(), err)
 
-	// Verify CreateListener was called with Hub's local service
-	assert.Equal(suite.T(), suite.localService, capturedService, "Should pass Hub's local service to CreateListener")
-
-	// Verify StartListening was called with correct parameters
-	assert.NotNil(suite.T(), capturedContext, "Should pass context to StartListening")
-	assert.Equal(suite.T(), suite.validSecret, capturedSecret, "Should pass config secret to StartListening")
+	assert.NotNil(suite.T(), capturedContext)
+	assert.Equal(suite.T(), suite.validSecret, capturedSecret)
 }
 
 func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ReusesExistingListener() {
