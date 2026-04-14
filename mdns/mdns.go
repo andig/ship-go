@@ -497,7 +497,13 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 				m.UnannounceMdnsEntry()
 			}
 			if pairingWasAnnounced {
+				m.pairingInstancesMux.RLock()
+				oldPairingIDs := make([]string, 0, len(m.pairingInstances))
 				for instanceID := range m.pairingInstances {
+					oldPairingIDs = append(oldPairingIDs, instanceID)
+				}
+				m.pairingInstancesMux.RUnlock()
+				for _, instanceID := range oldPairingIDs {
 					m.UnannouncePairingService(instanceID)
 				}
 			}
@@ -517,18 +523,28 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 		logging.Log().Debug("mdns: announcement failed:", err)
 		return
 	}
-	entriesToAdd := map[string]*api.ShipPairingTXT{}
-	for instanceID, txt := range m.pairingEntries {
-		newInstanceID, err := m.AnnouncePairingService(txt)
-		if err != nil {
-			logging.Log().Debug("mdns: announcement failed:", err)
+
+	// Re-announce all pairing service instances with updated interfaces.
+	// Collect old instance IDs first (create-then-swap: new announcement goes up before
+	// the old one is torn down, avoiding mDNS goodbye packets).
+	m.pairingInstancesMux.RLock()
+	type pairingInstance struct {
+		instanceID string
+		txt        *api.ShipPairingTXT
+	}
+	oldPairingInstances := make([]pairingInstance, 0, len(m.pairingInstances))
+	for instanceID, txt := range m.pairingInstances {
+		oldPairingInstances = append(oldPairingInstances, pairingInstance{instanceID, txt})
+	}
+	m.pairingInstancesMux.RUnlock()
+
+	for _, instance := range oldPairingInstances {
+		if _, err := m.AnnouncePairingService(instance.txt); err != nil {
+			logging.Log().Debug("mdns: pairing announcement failed:", err)
 			return
 		}
-		delete(m.pairingEntries, instanceID)
-		entriesToAdd[newInstanceID] = txt
-	}
-	for instanceID, txt := range entriesToAdd {
-		m.pairingEntries[instanceID] = txt
+		// New announcement is live; now tear down the old provider instance.
+		m.UnannouncePairingService(instance.instanceID)
 	}
 
 	if !wasAnnounced {

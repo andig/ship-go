@@ -1909,3 +1909,133 @@ func (s *MdnsSuite) Test_DeviceGetters() {
 	assert.Equal(s.T(), "EnergyManagementSystem", s.sut.DeviceType())
 	assert.Equal(s.T(), []api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem}, s.sut.DeviceCategories())
 }
+
+// validPairingTXTRecord returns a minimal valid ShipPairingTXT suitable for use in tests.
+// All four fields checked by ShipPairingTXT.Validate() are set to accepted values.
+func validPairingTXTRecord() *api.ShipPairingTXT {
+	return &api.ShipPairingTXT{
+		TxtVers:    "1",
+		ParType:    api.ParTypeFPSHA256,
+		ForId:      "for-device-id",
+		ForPar:     "0000000000000000000000000000000000000000000000000000000000000000",
+		TrustId:    "trust-device-id",
+		TrustPar:   "1111111111111111111111111111111111111111111111111111111111111111",
+		TrustCurve: api.CurveSecp256r1,
+		Type:       api.CommandTypeAddCU,
+		TrustNonce: "22222222222222222222222222222222",
+		Alg:        api.AlgorithmHMACSHA256,
+		Digest:     "3333333333333333333333333333333333333333333333333333333333333333",
+	}
+}
+
+// Test_reannounceWithNewInterfaces_PairingReannouncement verifies that when interfaces
+// change, reannounceWithNewInterfaces re-announces OUR announced pairing services
+// (from pairingInstances) and does NOT touch discovered remote services (pairingEntries).
+// Also verifies create-then-swap: new announcement is live before old is torn down.
+func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PairingReannouncement() {
+	provider := mocks.NewMdnsProviderInterface(s.T())
+	provider.EXPECT().Shutdown().Return().Maybe()
+
+	// SHIP service re-announcement (reannounceWithNewInterfaces always calls AnnounceMdnsEntry)
+	provider.EXPECT().
+		AnnounceService(shipZeroConfServiceType, mock.Anything, mock.Anything, mock.Anything).
+		Return("new-ship-id", nil).Once()
+
+	// Pairing service re-announcement — one call expected for our one announced instance
+	provider.EXPECT().
+		AnnounceService(shipPairingZeroConfServiceType, mock.Anything, mock.Anything, mock.Anything).
+		Return("new-pairing-id", nil).Once()
+
+	// Old pairing instance must be torn down after the new one is live (create-then-swap)
+	provider.EXPECT().
+		UnannounceService("old-pairing-id").
+		Return(nil).Once()
+
+	// Shutdown (AfterTest) will call UnannounceMdnsEntry with the new ship instance ID
+	provider.EXPECT().
+		UnannounceService("new-ship-id").
+		Return(nil).Maybe()
+
+	s.sut.Shutdown()
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, nil, MdnsProviderSelectionAll)
+	s.sut.SetMdnsProvider(provider)
+
+	// Pre-populate pairingInstances — these are OUR announced pairing services
+	txtRecord := validPairingTXTRecord()
+	s.sut.pairingInstancesMux.Lock()
+	s.sut.pairingInstances["old-pairing-id"] = txtRecord
+	s.sut.pairingInstancesMux.Unlock()
+
+	// Pre-populate pairingEntries — these are DISCOVERED remote services; must not be re-announced
+	s.sut.pairingEntries["discovered-remote"] = &api.ShipPairingTXT{
+		TxtVers:    "1",
+		ParType:    api.ParTypeFPSHA256,
+		Type:       api.CommandTypeAddCU,
+		TrustCurve: api.CurveSecp256r1,
+		Alg:        api.AlgorithmHMACSHA256,
+	}
+
+	s.sut.reannounceWithNewInterfaces()
+
+	// After re-announcement: new ID present, old ID gone
+	s.sut.pairingInstancesMux.RLock()
+	_, hasOld := s.sut.pairingInstances["old-pairing-id"]
+	_, hasNew := s.sut.pairingInstances["new-pairing-id"]
+	count := len(s.sut.pairingInstances)
+	s.sut.pairingInstancesMux.RUnlock()
+
+	assert.False(s.T(), hasOld, "old pairing instance should be removed after create-then-swap")
+	assert.True(s.T(), hasNew, "new pairing instance should be present after re-announcement")
+	assert.Equal(s.T(), 1, count, "pairingInstances should have exactly one entry after re-announcement")
+
+	// Discovered remote entries must be untouched
+	assert.Contains(s.T(), s.sut.pairingEntries, "discovered-remote",
+		"pairingEntries (discovered) must not be modified during re-announcement")
+}
+
+// Test_reannounceWithNewInterfaces_NoInterfaces_WithPairing verifies that when no interfaces
+// are available and pairing services were announced, all pairing instances are unannounced
+// using mutex-safe iteration (no data race on pairingInstances).
+func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces_WithPairing() {
+	s.sut.Shutdown()
+	s.sut = NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, []string{"nonexistent_iface"}, MdnsProviderSelectionAll)
+
+	provider := mocks.NewMdnsProviderInterface(s.T())
+	provider.EXPECT().Shutdown().Return().Maybe()
+	// Both pairing instances must be unannounced (map iteration order is non-deterministic)
+	provider.EXPECT().UnannounceService(mock.Anything).Return(nil).Times(2)
+
+	s.sut.SetMdnsProvider(provider)
+
+	// Pre-populate two pairing instances
+	txtRecord := validPairingTXTRecord()
+	s.sut.pairingInstancesMux.Lock()
+	s.sut.pairingInstances["p1"] = txtRecord
+	s.sut.pairingInstances["p2"] = txtRecord
+	s.sut.pairingInstancesMux.Unlock()
+
+	// Mark SHIP service as announced so the wasAnnounced path is exercised.
+	// Note: reannounceWithNewInterfaces sets isAnnounced=false before calling
+	// UnannounceMdnsEntry, so UnannounceMdnsEntry returns early without a provider call.
+	s.sut.muxAnnounced.Lock()
+	s.sut.isAnnounced = true
+	s.sut.muxAnnounced.Unlock()
+
+	s.sut.reannounceWithNewInterfaces()
+
+	// All pairing instances must be cleaned up when no interfaces are available
+	s.sut.pairingInstancesMux.RLock()
+	remaining := len(s.sut.pairingInstances)
+	s.sut.pairingInstancesMux.RUnlock()
+
+	assert.Equal(s.T(), 0, remaining, "all pairing instances should be removed when no interfaces are available")
+	assert.False(s.T(), s.sut.IsPairingServiceAnnounced(), "IsPairingServiceAnnounced should be false when no instances remain")
+}
