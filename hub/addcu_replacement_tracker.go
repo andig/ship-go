@@ -98,13 +98,15 @@ func (t *AddCuReplacementTracker) StartTimer(shipID string, onTimeout func(expir
 		// Capture shipID before clearing state to pass to callback
 		expiredShipID := shipID
 
-		// Clear state when timer expires
+		// Clear state when timer expires, then release the lock before invoking
+		// the callback. The callback may re-enter the tracker (e.g. IsInReplacementWindow),
+		// and sync.RWMutex is not reentrant — holding the lock while calling onTimeout
+		// would deadlock.
 		t.mutex.Lock()
-		defer t.mutex.Unlock()
-
 		t.pairedDeviceShipID = ""
 		t.disconnectionTime = time.Time{}
 		t.timer = nil
+		t.mutex.Unlock()
 
 		// Call the timeout callback if provided, passing the expired shipID
 		if onTimeout != nil {
