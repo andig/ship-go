@@ -93,8 +93,7 @@ type MdnsManager struct {
 	// which pairing mode
 	pairingMode api.PairingMode
 
-	isAnnounced        bool // State for _ship._tcp service
-	isPairingAnnounced bool // State for _shippairing._tcp service
+	isAnnounced bool // State for _ship._tcp service
 
 	// announcedPairings tracks all pairing services this device has announced.
 	// The map key is a stable logical ID returned to — and held by — callers.
@@ -501,7 +500,6 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 	}
 
 	m.setIsServiceAnnounce(false)
-	m.setIsPairingServiceAnnounced(false)
 
 	// Re-resolve interfaces (will pick up newly available ones)
 	ifaces, ifaceIndexes, err := m.resolveInterfaces()
@@ -1378,7 +1376,6 @@ func (m *MdnsManager) AnnouncePairingService(txtRecord *api.ShipPairingTXT) (str
 	}
 	m.announcedPairingsMux.Unlock()
 
-	m.setIsPairingServiceAnnounced(true)
 	return logicalID, nil
 }
 
@@ -1399,16 +1396,12 @@ func (m *MdnsManager) UnannouncePairingService(logicalID string) error {
 	}
 	providerID := entry.providerID
 	delete(m.announcedPairings, logicalID)
-	remaining := len(m.announcedPairings)
 	m.announcedPairingsMux.Unlock()
 
 	if err := provider.UnannounceService(providerID); err != nil {
 		return err
 	}
 
-	if remaining == 0 {
-		m.setIsPairingServiceAnnounced(false)
-	}
 	return nil
 }
 
@@ -1479,13 +1472,6 @@ func (m *MdnsManager) IsPairingServiceAnnounced() bool {
 	has := len(m.announcedPairings) > 0
 	m.announcedPairingsMux.RUnlock()
 	return has
-}
-
-// setIsPairingServiceAnnounced updates pairing service announcement state (internal helper)
-func (m *MdnsManager) setIsPairingServiceAnnounced(announced bool) {
-	m.muxAnnounced.Lock()
-	defer m.muxAnnounced.Unlock()
-	m.isPairingAnnounced = announced
 }
 
 // convertPairingTXTToArray converts ShipPairingTXT to string array for provider (fixed per sub-agent review)
