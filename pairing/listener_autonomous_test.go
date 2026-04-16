@@ -43,7 +43,7 @@ func (suite *AutonomousListenerTestSuite) SetupTest() {
 	suite.mockHub = mocks.NewPairingHubInterface(suite.T())
 
 	// Setup test data
-	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
+	suite.localService, _ = api.NewServiceDetails("heatpumpski", "", "")
 	suite.localService.SetShipID("i:983327_u:C8277H008F-3")
 	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 	suite.testSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE"))

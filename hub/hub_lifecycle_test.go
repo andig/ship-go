@@ -34,7 +34,7 @@ func TestHub_Lifecycle_DoubleStart_ReturnsError(t *testing.T) {
 	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
 	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
 
@@ -71,7 +71,7 @@ func TestHub_Lifecycle_RestartAfterShutdown(t *testing.T) {
 	mdnsService.EXPECT().Shutdown().Times(2)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
 	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
 
@@ -109,7 +109,7 @@ func TestHub_Lifecycle_ShutdownResetsState(t *testing.T) {
 	mdnsService.EXPECT().Shutdown().Times(1)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
 	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
 
@@ -145,7 +145,7 @@ func TestHub_Lifecycle_RetryAfterMdnsFailure(t *testing.T) {
 	)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
 	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
 

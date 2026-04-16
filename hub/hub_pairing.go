@@ -34,7 +34,10 @@ type AutoTrustEstablishmentResult struct {
 // Provide the current pairing state for a ServiceIdentity
 func (h *Hub) PairingDetailFor(identity api.ServiceIdentity) *api.ConnectionStateDetail {
 	// Convert ServiceIdentity to ServiceDetails for service-based lookup
-	serviceForLookup := identity.ToServiceDetails()
+	serviceForLookup, err := identity.ToServiceDetails()
+	if err != nil {
+		return nil
+	}
 	if conn := h.connectionForService(serviceForLookup); conn != nil {
 		shipState, shipError := conn.ShipHandshakeState()
 		state := h.mapShipMessageExchangeState(shipState, identity.SKI)
@@ -118,7 +121,11 @@ func (h *Hub) RegisterRemoteService(identity api.ServiceIdentity) {
 		return
 	}
 
-	service := api.NewServiceDetails(identity.SKI, identity.Fingerprint, identity.ShipID)
+	service, err := api.NewServiceDetails(identity.SKI, identity.Fingerprint, identity.ShipID)
+	if err != nil {
+		logging.Log().Error("RegisterRemoteService: invalid identity", "error", err)
+		return
+	}
 	service.SetPairingType(identity.PairingType)
 	service.SetIPv4(identity.IPv4)
 
@@ -157,7 +164,7 @@ func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 	h.removeConnectionAttemptCounter(identity.SKI)
 
 	// Convert ServiceIdentity to ServiceDetails for service-based lookup
-	serviceForLookup := identity.ToServiceDetails()
+	serviceForLookup, _ := identity.ToServiceDetails()
 	if existingC := h.connectionForService(serviceForLookup); existingC != nil {
 		existingC.CloseConnection(true, 4500, "User close")
 	}
@@ -167,7 +174,7 @@ func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 // e.g. if heartbeats go wrong
 func (h *Hub) DisconnectService(identity api.ServiceIdentity, reason string) {
 	// Convert ServiceIdentity to ServiceDetails for service-based lookup
-	serviceForLookup := identity.ToServiceDetails()
+	serviceForLookup, _ := identity.ToServiceDetails()
 	con := h.connectionForService(serviceForLookup)
 	if con == nil {
 		return
@@ -181,7 +188,7 @@ func (h *Hub) CancelPairing(identity api.ServiceIdentity) {
 	h.removeConnectionAttemptCounter(identity.SKI)
 
 	// Convert ServiceIdentity to ServiceDetails for service-based lookup
-	serviceForLookup := identity.ToServiceDetails()
+	serviceForLookup, _ := identity.ToServiceDetails()
 	if existingC := h.connectionForService(serviceForLookup); existingC != nil {
 		existingC.AbortPendingHandshake()
 	}
@@ -364,7 +371,10 @@ func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 	}
 
 	// check if we are already connected to the target
-	service := api.NewServiceDetails(target.SKI, target.Fingerprint, target.ShipID)
+	service, err := api.NewServiceDetails(target.SKI, target.Fingerprint, target.ShipID)
+	if err != nil {
+		return fmt.Errorf("invalid pairing target: %w", err)
+	}
 	conn := h.connectionForService(service)
 	if conn != nil {
 		if connState, err := conn.ShipHandshakeState(); err == nil && connState == model.SmeStateComplete {
@@ -531,7 +541,12 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 	service := h.ServiceForIdentifier("", remoteFingerprint)
 	if service == nil {
 		// This should be the normal case
-		service = api.NewServiceDetails("", remoteFingerprint, remoteShipID)
+		var err error
+		service, err = api.NewServiceDetails("", remoteFingerprint, remoteShipID)
+		if err != nil {
+			logging.Log().Error("OnPairingSuccess: invalid identifiers", "shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
+			return
+		}
 		if success := h.addService(service); !success {
 			logging.Log().Error("Failed to add service during pairing success - ShipID:", remoteShipID, "Fingerprint:", remoteFingerprint)
 			return
@@ -574,7 +589,11 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 // OnPairingFailure handles pairing validation failure (implements PairingHubInterface)
 func (h *Hub) OnPairingFailure(remoteShipID, remoteFingerprint string, reason error) {
 	// Use ServiceForFingerprint for consistent service management and SKI normalization
-	service := api.NewServiceDetails("", remoteFingerprint, remoteShipID)
+	service, err := api.NewServiceDetails("", remoteFingerprint, remoteShipID)
+	if err != nil {
+		logging.Log().Error("OnPairingFailure: invalid identifiers", "shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
+		return
+	}
 	service.ConnectionStateDetail().SetState(api.ConnectionStateError)
 	service.ConnectionStateDetail().SetError(reason)
 

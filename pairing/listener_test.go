@@ -43,7 +43,7 @@ func (suite *ListenerTestSuite) SetupTest() {
 	suite.mockHub = mocks.NewPairingHubInterface(suite.T())
 
 	// Setup test data
-	suite.localService = api.NewServiceDetails("heatpumpski", "", "")
+	suite.localService, _ = api.NewServiceDetails("heatpumpski", "", "")
 	suite.localService.SetShipID("i:983327_u:C8277H008F-3") // devA from SHIP spec
 	suite.localService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 	suite.testSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE")) // devA secret from spec
@@ -385,9 +385,10 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
 	assert.NoError(suite.T(), err)
 
 	// Mock AddCu device check (simulate this is a potential replacement)
+	svc, _ := api.NewServiceDetails("", "EXISTINGFINGERPRINT456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB", "i:existing_u:already-paired-device")
 	suite.mockHub.EXPECT().
 		GetTrustedAddCuDevice().
-		Return(api.NewServiceDetails("", "EXISTINGFINGERPRINT456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB", "i:existing_u:already-paired-device")).
+		Return(svc).
 		Maybe()
 
 	// Mock HMAC validation failure (since digest is invalid)
@@ -597,9 +598,10 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NewDeviceAfterTimeout
 	txtRecord.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"    // New digest (valid hex)
 
 	// Mock existing AddCu device exists with different ShipID
+	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
 	suite.mockHub.EXPECT().
 		GetTrustedAddCuDevice().
-		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
+		Return(svc).
 		Maybe()
 
 	// Mock HMAC validation - should succeed (key fix: we reach this point now)
@@ -651,9 +653,10 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_SameDeviceRepairing_S
 	txtRecord.TrustPar = "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB" // Valid hex fingerprint
 
 	// Mock existing AddCu device with same ShipID (re-pairing scenario)
+	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
 	suite.mockHub.EXPECT().
 		GetTrustedAddCuDevice().
-		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
+		Return(svc).
 		Maybe()
 
 	// Mock HMAC validation - should succeed
@@ -707,9 +710,10 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_FailedHMACValidation_
 	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"    // Valid hex but will fail HMAC
 
 	// Mock existing AddCu device
+	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
 	suite.mockHub.EXPECT().
 		GetTrustedAddCuDevice().
-		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
+		Return(svc).
 		Maybe()
 
 	// Mock HMAC validation - should fail
@@ -794,9 +798,10 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_ReplayAttackDuringRep
 	txtRecord.TrustId = "i:99999_u:replacement-device-id" // New device
 
 	// Mock existing AddCu device
+	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
 	suite.mockHub.EXPECT().
 		GetTrustedAddCuDevice().
-		Return(api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")).
+		Return(svc).
 		Maybe()
 
 	// Mock successful HMAC validation

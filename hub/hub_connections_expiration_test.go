@@ -32,7 +32,7 @@ func TestCertificateExpirationLogging(t *testing.T) {
 		hubReader.EXPECT().RemoteServiceConnected(mock.AnythingOfType("api.ShipConnectionInterface")).Maybe()
 		hubReader.EXPECT().RemoteServiceDisconnected(mock.AnythingOfType("string")).Maybe()
 
-		service := api.NewServiceDetails("testski", "", "")
+		service, _ := api.NewServiceDetails("testski", "", "")
 		service.SetShipID("test-ship-id")
 
 		// Create a dummy certificate for testing

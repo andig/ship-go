@@ -551,7 +551,10 @@ func main() {
 	fmt.Printf("📜 Hub SKI: %s\n", ski)
 
 	// Create service details
-	serviceDetails := api.NewServiceDetails(ski, "", "")
+	serviceDetails, err := api.NewServiceDetails(ski, "", "")
+	if err != nil {
+		log.Fatal("Failed to create service details:", err)
+	}
 
 	// Create pairing hub reader
 	whitelistFile := "pairing_whitelist.json"

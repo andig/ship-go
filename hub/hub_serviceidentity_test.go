@@ -20,7 +20,7 @@ type HubServiceIdentitySuite struct {
 // Test ServiceFor method works the same as ServiceForIdentifier
 func (s *HubServiceIdentitySuite) TestServiceFor_EquivalentToServiceForIdentifier() {
 	// Create a service and add it to the hub
-	service := api.NewServiceDetails("testski", "test-fingerprint", "test-shipid")
+	service, _ := api.NewServiceDetails("testski", "test-fingerprint", "test-shipid")
 	s.sut.addService(service)
 
 	// Create equivalent ServiceIdentity
@@ -48,7 +48,7 @@ func (s *HubServiceIdentitySuite) TestServiceFor_MissingService() {
 // Test PairingDetailFor method works the same as PairingDetailForIdentifier
 func (s *HubServiceIdentitySuite) TestPairingDetailFor_EquivalentToPairingDetailForIdentifier() {
 	// Create a service and add it to the hub
-	service := api.NewServiceDetails("pairingski", "pairing-fingerprint", "pairing-shipid")
+	service, _ := api.NewServiceDetails("pairingski", "pairing-fingerprint", "pairing-shipid")
 	s.sut.addService(service)
 
 	// Create equivalent ServiceIdentity

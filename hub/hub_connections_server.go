@@ -149,7 +149,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	service := h.ServiceForIdentifier(ski, fingerprint)
 	if service == nil {
 		// Create new service if not found at all
-		service = api.NewServiceDetails(ski, fingerprint, "")
+		service, _ = api.NewServiceDetails(ski, fingerprint, "")
 		h.addService(service)
 	} else if service.SKI() != ski && service.Fingerprint() == fingerprint {
 		// Update the service with the actual SKI from the connection

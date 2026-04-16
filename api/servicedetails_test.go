@@ -23,8 +23,8 @@ func (s *ServiceDetailsSuite) Test_ServiceDetails() {
 	testFingerprint := "fingerprint"
 	testShipID := "ship-id"
 
-	details := NewServiceDetails(testSki, testFingerprint, testShipID)
-	assert.NotNil(s.T(), details)
+	details, err := NewServiceDetails(testSki, testFingerprint, testShipID)
+	assert.NoError(s.T(), err)
 
 	conState := NewConnectionStateDetail(ConnectionStateNone, nil)
 	details.SetConnectionStateDetail(conState)
@@ -62,7 +62,8 @@ func (s *ServiceDetailsSuite) Test_ServiceDetails() {
 
 func (s *ServiceDetailsSuite) Test_ServiceDetails_FingerprintStorage() {
 	testSki := "test"
-	details := NewServiceDetails(testSki, "", "")
+	details, err := NewServiceDetails(testSki, "", "")
+	assert.NoError(s.T(), err)
 
 	// Test: Default fingerprint is empty
 	assert.Empty(s.T(), details.Fingerprint())
@@ -84,7 +85,8 @@ func (s *ServiceDetailsSuite) Test_ServiceDetails_FingerprintStorage() {
 
 func (s *ServiceDetailsSuite) Test_ServiceDetails_Copy() {
 	// Create original service with all fields populated
-	original := NewServiceDetails("testski", "fingerprint-123", "ship-456")
+	original, err := NewServiceDetails("testski", "fingerprint-123", "ship-456")
+	assert.NoError(s.T(), err)
 	original.SetIPv4("192.168.1.1")
 	original.SetAutoAccept(true)
 	original.SetTrusted(true)
@@ -128,7 +130,8 @@ func (s *ServiceDetailsSuite) Test_ServiceDetails_Copy() {
 // Test that uninitialized PairingType defaults to PairingTypeDefault
 func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_DefaultValue() {
 	// Create a new service
-	service := NewServiceDetails("testski", "", "")
+	service, err := NewServiceDetails("testski", "", "")
+	assert.NoError(s.T(), err)
 
 	// Test: Default pairing type should be PairingTypeDefault
 	assert.Equal(s.T(), PairingTypeDefault, service.PairingType())
@@ -136,7 +139,8 @@ func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_DefaultValue() {
 
 // Test setting and getting PairingType values
 func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_SetAndGet() {
-	service := NewServiceDetails("testski", "", "")
+	service, err := NewServiceDetails("testski", "", "")
+	assert.NoError(s.T(), err)
 
 	// Test: Default value
 	assert.Equal(s.T(), PairingTypeDefault, service.PairingType())
@@ -152,7 +156,8 @@ func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_SetAndGet() {
 
 // Test concurrent access to PairingType
 func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_ThreadSafety() {
-	service := NewServiceDetails("testski", "", "")
+	service, err := NewServiceDetails("testski", "", "")
+	assert.NoError(s.T(), err)
 
 	const numGoroutines = 10
 	const numIterations = 100
@@ -191,7 +196,8 @@ func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_ThreadSafety() {
 
 // Test atomic behavior of PairingType operations
 func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_AtomicOperations() {
-	service := NewServiceDetails("testski", "", "")
+	service, err := NewServiceDetails("testski", "", "")
+	assert.NoError(s.T(), err)
 
 	// Test: Verify initial state
 	assert.Equal(s.T(), PairingTypeDefault, service.PairingType())
@@ -233,7 +239,8 @@ func (s *ServiceDetailsSuite) TestServiceDetails_PairingType_AtomicOperations() 
 // Step 1: Conversion methods test - RED phase (test first)
 func (s *ServiceDetailsSuite) TestServiceDetails_ToServiceIdentity() {
 	// Test: Convert ServiceDetails to ServiceIdentity
-	details := NewServiceDetails("convert-ski", "convert-fingerprint", "convert-shipid")
+	details, err := NewServiceDetails("convert-ski", "convert-fingerprint", "convert-shipid")
+	assert.NoError(s.T(), err)
 	details.SetPairingType(PairingTypeAddCu)
 	details.SetIPv4("192.168.1.100")
 
@@ -265,9 +272,22 @@ func (s *ServiceDetailsSuite) TestSKIToServiceIdentity() {
 	assert.Empty(s.T(), identity.IPv4)
 }
 
+func (s *ServiceDetailsSuite) TestNewServiceDetails_InvalidArgs() {
+	// Both SKI and fingerprint empty
+	svc, err := NewServiceDetails("", "", "")
+	assert.Error(s.T(), err)
+	assert.Nil(s.T(), svc)
+
+	// Fingerprint without SKI or SHIP ID
+	svc, err = NewServiceDetails("", "some-fingerprint", "")
+	assert.Error(s.T(), err)
+	assert.Nil(s.T(), svc)
+}
+
 func (s *ServiceDetailsSuite) TestServiceDetails_RoundTripConversion() {
 	// Test: ServiceDetails → ServiceIdentity → ServiceDetails preserves data
-	original := NewServiceDetails("roundtrip-ski", "roundtrip-fingerprint", "roundtrip-shipid")
+	original, err := NewServiceDetails("roundtrip-ski", "roundtrip-fingerprint", "roundtrip-shipid")
+	assert.NoError(s.T(), err)
 	original.SetPairingType(PairingTypeAddCu)
 	original.SetIPv4("203.0.113.1")
 

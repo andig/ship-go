@@ -55,9 +55,9 @@ func NewService(
 		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
 	}
 
-	svc := api.NewServiceDetails("", fingerprint, shipID)
-	if svc == nil {
-		return nil, fmt.Errorf("failed to create service details")
+	svc, err := api.NewServiceDetails("", fingerprint, shipID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service details: %w", err)
 	}
 
 	return &Service{

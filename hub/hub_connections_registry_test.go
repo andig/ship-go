@@ -57,7 +57,7 @@ func (s *HubConnectionsRegistrySuite) BeforeTest(suiteName, testName string) {
 	s.shipConnection.EXPECT().DataHandler().Return(s.wsDataWriter).Maybe()
 	s.shipConnection.EXPECT().ShipHandshakeState().Return(model.SmeStateComplete, nil).Maybe()
 
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 	var err error
 	s.sut, err = newTestHub(s.hubReader, s.mdnsService, 4567, certificate, localService, nil)
@@ -87,7 +87,7 @@ func (s *HubConnectionsRegistrySuite) Test_IsRemoteSKIPaired() {
 	assert.Equal(s.T(), false, paired)
 
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	hub, err := newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, nil)
 	assert.NotNil(s.T(), hub)
@@ -130,7 +130,8 @@ func (s *HubConnectionsRegistrySuite) Test_HandleConnectionClosed() {
 func (s *HubConnectionsRegistrySuite) Test_RegisterConnection() {
 	s.sut.registerConnection(s.shipConnection)
 	assert.Equal(s.T(), 1, len(s.sut.connections))
-	con := s.sut.connectionForService(api.NewServiceDetails(s.remoteSki, "", ""))
+	svcDetails, _ := api.NewServiceDetails(s.remoteSki, "", "")
+	con := s.sut.connectionForService(svcDetails)
 	assert.NotNil(s.T(), con)
 }
 
@@ -211,7 +212,7 @@ func (s *HandleConnectionClosedTestSuite) SetupTest() {
 	var err error
 	s.certificate, err = cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
 	require.NoError(s.T(), err)
-	s.localService = api.NewServiceDetails("hubtestski", "", "")
+	s.localService, _ = api.NewServiceDetails("hubtestski", "", "")
 
 	// Create Hub
 	s.hub, err = newTestHub(
@@ -334,7 +335,8 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_DoubleConne
 
 	// Assert - First connection should remain registered
 	assert.Equal(s.T(), 1, len(s.hub.connections), "Registered connection should remain")
-	conn := s.hub.connectionForService(api.NewServiceDetails(s.testSKI, "", ""))
+	testSvcDetails, _ := api.NewServiceDetails(s.testSKI, "", "")
+	conn := s.hub.connectionForService(testSvcDetails)
 	assert.Equal(s.T(), s.mockConnection, conn, "Original connection should still be registered")
 }
 
@@ -354,7 +356,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_AddCuTimerS
 	// Test that AddCu replacement timer is started for AddCu devices
 
 	// Setup - Create AddCu service and register connection
-	addCuService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	addCuService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	addCuService.SetTrusted(true)
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(addCuService)
@@ -375,7 +377,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_NonAddCuNoT
 	// Test that timer is not started for non-AddCu devices
 
 	// Setup - Create regular (non-AddCu) service
-	regularService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	regularService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	regularService.SetTrusted(true)
 	regularService.SetPairingType(api.PairingTypeDefault) // Not AddCu
 	success := s.hub.addService(regularService)
@@ -395,7 +397,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_AddCuEmptyS
 	// Test that timer is not started for AddCu devices with empty ShipID
 
 	// Setup - Create AddCu service with empty ShipID
-	addCuService := api.NewServiceDetails(s.testSKI, "", "") // Empty ShipID
+	addCuService, _ := api.NewServiceDetails(s.testSKI, "", "") // Empty ShipID
 	addCuService.SetTrusted(true)
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(addCuService)
@@ -415,7 +417,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_AddCuUntrus
 	// Test that timer is not started for untrusted AddCu devices with incomplete handshake
 
 	// Setup - Create untrusted AddCu service
-	addCuService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	addCuService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	addCuService.SetTrusted(false) // Not trusted
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(addCuService)
@@ -435,7 +437,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_AddCuTimerW
 	// Test that timer is started with correct callback for AddCu devices
 
 	// Setup - Create trusted AddCu service
-	addCuService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	addCuService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	addCuService.SetTrusted(true)
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(addCuService)
@@ -458,7 +460,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_NoReconnect
 	// Test early return when handshake failed and service is not trusted
 
 	// Setup - Create untrusted service
-	untrustedService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	untrustedService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	untrustedService.SetTrusted(false)
 	success := s.hub.addService(untrustedService)
 	require.True(s.T(), success, "Should add untrusted service")
@@ -476,7 +478,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_Reconnectio
 	// Test that auto-reannounce is checked for trusted services
 
 	// Setup - Create trusted service
-	trustedService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	trustedService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	trustedService.SetTrusted(true)
 	success := s.hub.addService(trustedService)
 	require.True(s.T(), success, "Should add trusted service")
@@ -495,7 +497,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_Reconnectio
 	// Test that auto-reannounce is checked for completed handshakes even if service untrusted
 
 	// Setup - Create untrusted service
-	untrustedService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	untrustedService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	untrustedService.SetTrusted(false)
 	success := s.hub.addService(untrustedService)
 	require.True(s.T(), success, "Should add untrusted service")
@@ -530,7 +532,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_ServiceStat
 	// Test service state remains consistent after connection close
 
 	// Setup - Create trusted service
-	trustedService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	trustedService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	trustedService.SetTrusted(true)
 	trustedService.SetPairingType(api.PairingTypeDefault)
 	success := s.hub.addService(trustedService)
@@ -554,12 +556,12 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_MultipleSer
 	// Test that only the correct service's connection is handled
 
 	// Setup - Create multiple services
-	service1 := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	service1, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	service1.SetTrusted(true)
 	success1 := s.hub.addService(service1)
 	require.True(s.T(), success1, "Should add first service")
 
-	service2 := api.NewServiceDetails(s.otherSKI, "", s.otherShipID)
+	service2, _ := api.NewServiceDetails(s.otherSKI, "", s.otherShipID)
 	service2.SetTrusted(true)
 	success2 := s.hub.addService(service2)
 	require.True(s.T(), success2, "Should add second service")
@@ -576,10 +578,12 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_MultipleSer
 	// Assert - Only first connection removed, second remains
 	assert.Equal(s.T(), 1, len(s.hub.connections), "One connection should remain")
 
-	remainingConn := s.hub.connectionForService(api.NewServiceDetails(s.otherSKI, "", ""))
+	otherSvcDetails, _ := api.NewServiceDetails(s.otherSKI, "", "")
+	remainingConn := s.hub.connectionForService(otherSvcDetails)
 	assert.Equal(s.T(), s.mockConnection2, remainingConn, "Second connection should remain")
 
-	removedConn := s.hub.connectionForService(api.NewServiceDetails(s.testSKI, "", ""))
+	testSvcDetails2, _ := api.NewServiceDetails(s.testSKI, "", "")
+	removedConn := s.hub.connectionForService(testSvcDetails2)
 	assert.Nil(s.T(), removedConn, "First connection should be removed")
 }
 
@@ -587,7 +591,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_ServiceAcce
 	// Test that service access is thread-safe during connection close
 
 	// Setup - Create service and register connection
-	service := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	service, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	service.SetTrusted(true)
 	success := s.hub.addService(service)
 	require.True(s.T(), success, "Should add service")
@@ -744,7 +748,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_ConcurrentW
 	// Test HandleConnectionClosed concurrent with service operations
 
 	// Setup - Create service and register connection
-	service := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	service, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	service.SetTrusted(true)
 	success := s.hub.addService(service)
 	require.True(s.T(), success, "Should add service")
@@ -793,7 +797,7 @@ func (s *HandleConnectionClosedTestSuite) TestHandleConnectionClosed_MultipleCon
 
 	// Setup services and connections
 	for i, ski := range skis {
-		service := api.NewServiceDetails(ski, "", fmt.Sprintf("ship-%d", i))
+		service, _ := api.NewServiceDetails(ski, "", fmt.Sprintf("ship-%d", i))
 		service.SetTrusted(true)
 		success := s.hub.addService(service)
 		require.True(s.T(), success, "Should add service for SKI: %s", ski)
@@ -827,7 +831,7 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_SKILookup() {
 	s.sut.registerConnection(s.shipConnection)
 
 	// Create service with SKI
-	service := api.NewServiceDetails(s.remoteSki, "test-fp", "test-ship")
+	service, _ := api.NewServiceDetails(s.remoteSki, "test-fp", "test-ship")
 	
 	// Should find connection by SKI
 	conn := s.sut.connectionForService(service)
@@ -840,11 +844,11 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_FingerprintFallb
 	s.sut.registerConnection(s.shipConnection)
 
 	// Add service to hub with fingerprint matching the connection
-	connectedService := api.NewServiceDetails(s.remoteSki, "matching-fingerprint", "ship123")
+	connectedService, _ := api.NewServiceDetails(s.remoteSki, "matching-fingerprint", "ship123")
 	s.sut.addService(connectedService)
 
 	// Create lookup service with empty SKI but matching fingerprint (AddCu scenario)
-	lookupService := api.NewServiceDetails("", "matching-fingerprint", "different-ship")
+	lookupService, _ := api.NewServiceDetails("", "matching-fingerprint", "different-ship")
 	
 	// Should find connection by fingerprint fallback
 	conn := s.sut.connectionForService(lookupService)
@@ -857,11 +861,11 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_ShipIDFallback()
 	s.sut.registerConnection(s.shipConnection)
 
 	// Add service to hub with shipID matching the lookup
-	connectedService := api.NewServiceDetails(s.remoteSki, "conn-fingerprint", "matching-ship")
+	connectedService, _ := api.NewServiceDetails(s.remoteSki, "conn-fingerprint", "matching-ship")
 	s.sut.addService(connectedService)
 
 	// Create lookup service with empty SKI, different fingerprint, but matching shipID
-	lookupService := api.NewServiceDetails("", "different-fingerprint", "matching-ship")
+	lookupService, _ := api.NewServiceDetails("", "different-fingerprint", "matching-ship")
 	
 	// Should find connection by shipID fallback
 	conn := s.sut.connectionForService(lookupService)
@@ -874,11 +878,11 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_NoMatch() {
 	s.sut.registerConnection(s.shipConnection)
 
 	// Add service that won't match
-	connectedService := api.NewServiceDetails(s.remoteSki, "conn-fingerprint", "conn-ship")
+	connectedService, _ := api.NewServiceDetails(s.remoteSki, "conn-fingerprint", "conn-ship")
 	s.sut.addService(connectedService)
 
 	// Create lookup service with completely different identifiers
-	lookupService := api.NewServiceDetails("different-ski", "different-fingerprint", "different-ship")
+	lookupService, _ := api.NewServiceDetails("different-ski", "different-fingerprint", "different-ship")
 	
 	// Should not find any connection
 	conn := s.sut.connectionForService(lookupService)
@@ -893,7 +897,7 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_NilService() {
 
 func (s *HubConnectionsRegistrySuite) Test_connectionForService_EmptyIdentifiers() {
 	// Test edge case: service with all empty identifiers
-	emptyService := api.NewServiceDetails("", "", "")
+	emptyService, _ := api.NewServiceDetails("", "", "")
 	conn := s.sut.connectionForService(emptyService)
 	assert.Nil(s.T(), conn)
 }
@@ -903,11 +907,13 @@ func (s *HubConnectionsRegistrySuite) Test_connectionForService_BackwardCompatib
 	s.sut.registerConnection(s.shipConnection)
 
 	// Test old API still works
-	conn := s.sut.connectionForService(api.NewServiceDetails(s.remoteSki, "", ""))
+	remoteSvc, _ := api.NewServiceDetails(s.remoteSki, "", "")
+	conn := s.sut.connectionForService(remoteSvc)
 	assert.NotNil(s.T(), conn)
 	assert.Equal(s.T(), s.shipConnection, conn)
-	
+
 	// Test empty SKI returns nil
-	conn = s.sut.connectionForService(api.NewServiceDetails("", "", ""))
+	emptySvc, _ := api.NewServiceDetails("", "", "")
+	conn = s.sut.connectionForService(emptySvc)
 	assert.Nil(s.T(), conn)
 }

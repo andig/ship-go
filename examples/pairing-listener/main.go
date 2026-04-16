@@ -714,7 +714,10 @@ func main() {
 	// Step 2: Create service details for mDNS announcement
 	// Use a simple, consistent SHIP ID (in production, this could be generated from device serial/MAC/etc)
 	shipID := "listener-" + ski[:12] // Use first 12 chars of SKI for uniqueness
-	serviceDetails := api.NewServiceDetails(ski, "", "")
+	serviceDetails, err := api.NewServiceDetails(ski, "", "")
+	if err != nil {
+		log.Fatal("Failed to create service details:", err)
+	}
 	serviceDetails.SetShipID(shipID) // Set the SHIP ID for QR code generation
 
 	// Step 3: Create mDNS manager for device discovery

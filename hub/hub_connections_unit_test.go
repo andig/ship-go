@@ -133,7 +133,7 @@ func TestConnectFoundServiceBasics(t *testing.T) {
 	t.Run("connection_error", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("errorski", "", "")
+		service, _ := api.NewServiceDetails("errorski", "", "")
 		// Invalid address should cause error
 		err := hub.connectFoundService(service, "invalid.host.doesnotexist", "4729", "/ship")
 		assert.Error(t, err)
@@ -145,7 +145,7 @@ func TestInitateConnectionBasics(t *testing.T) {
 	t.Run("not_paired_not_queued", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("unpairedski", "", "")
+		service, _ := api.NewServiceDetails("unpairedski", "", "")
 		entry := &api.MdnsEntry{
 			Identifier: "unpairedski",
 			Host:       "localhost",
@@ -160,7 +160,7 @@ func TestInitateConnectionBasics(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "hostnameeski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
 
 		entry := &api.MdnsEntry{
@@ -177,7 +177,7 @@ func TestInitateConnectionBasics(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "ipv4ski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
 
 		entry := &api.MdnsEntry{
@@ -197,7 +197,7 @@ func TestInitateConnectionBasics(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "mixedski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
 
 		entry := &api.MdnsEntry{
@@ -247,7 +247,7 @@ func TestConnectFoundServiceEdgeCases(t *testing.T) {
 	t.Run("empty_host", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("testski", "", "")
+		service, _ := api.NewServiceDetails("testski", "", "")
 		err := hub.connectFoundService(service, "", "4729", "/ship")
 		assert.Error(t, err, "Empty host should cause error")
 	})
@@ -255,7 +255,7 @@ func TestConnectFoundServiceEdgeCases(t *testing.T) {
 	t.Run("invalid_port", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("testski", "", "")
+		service, _ := api.NewServiceDetails("testski", "", "")
 		err := hub.connectFoundService(service, "localhost", "invalid-port", "/ship")
 		assert.Error(t, err, "Invalid port should cause error")
 	})
@@ -263,7 +263,7 @@ func TestConnectFoundServiceEdgeCases(t *testing.T) {
 	t.Run("empty_path", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("testski", "", "")
+		service, _ := api.NewServiceDetails("testski", "", "")
 		// Empty path should still work (defaults to "/")
 		err := hub.connectFoundService(service, "invalid.nonexistent.host", "4729", "")
 		assert.Error(t, err, "Should still get connection error due to invalid host")
@@ -276,7 +276,7 @@ func TestInitateConnectionEdgeCases(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "alreadyconnectedski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 
 		// Mock an existing connection
 		mockConn := mocks.NewShipConnectionInterface(t)
@@ -299,7 +299,7 @@ func TestInitateConnectionEdgeCases(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "noaddressesski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
 
 		entry := &api.MdnsEntry{
@@ -316,7 +316,7 @@ func TestInitateConnectionEdgeCases(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "untrustedski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		// Service is not trusted, so connection should be queued/skipped
 
 		entry := &api.MdnsEntry{
@@ -339,7 +339,8 @@ func TestConnectionForSKI(t *testing.T) {
 	mockConn.EXPECT().RemoteSKI().Return(ski).Maybe()
 
 	// Not found initially
-	conn := hub.connectionForService(api.NewServiceDetails(ski, "", ""))
+	skiSvc, _ := api.NewServiceDetails(ski, "", "")
+	conn := hub.connectionForService(skiSvc)
 	assert.Nil(t, conn)
 
 	// Add connection
@@ -348,7 +349,7 @@ func TestConnectionForSKI(t *testing.T) {
 	hub.muxCon.Unlock()
 
 	// Found
-	conn = hub.connectionForService(api.NewServiceDetails(ski, "", ""))
+	conn = hub.connectionForService(skiSvc)
 	assert.Equal(t, mockConn, conn)
 }
 
@@ -370,7 +371,8 @@ func TestUnregisterConnectionIfMatchUnit(t *testing.T) {
 	assert.True(t, success)
 
 	// Verify removed
-	assert.Nil(t, hub.connectionForService(api.NewServiceDetails(ski, "", "")))
+	skiSvc2, _ := api.NewServiceDetails(ski, "", "")
+	assert.Nil(t, hub.connectionForService(skiSvc2))
 
 	// Add new connection
 	hub.muxCon.Lock()
@@ -382,7 +384,7 @@ func TestUnregisterConnectionIfMatchUnit(t *testing.T) {
 	assert.False(t, success)
 
 	// Original connection still there
-	assert.Equal(t, mockConn1, hub.connectionForService(api.NewServiceDetails(ski, "", "")))
+	assert.Equal(t, mockConn1, hub.connectionForService(skiSvc2))
 
 	// Try to unregister non-existent
 	success = hub.UnregisterConnectionIfMatch("non-existent", mockConn1)
@@ -413,9 +415,9 @@ func TestStartWebsocketServer(t *testing.T) {
 func TestKeepThisConnectionBasics(t *testing.T) {
 	t.Run("no_existing_connection", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
-		hub.localService = api.NewServiceDetails("localski", "", "")
+		hub.localService, _ = api.NewServiceDetails("localski", "", "")
 
-		remoteService := api.NewServiceDetails("remoteski", "", "")
+		remoteService, _ := api.NewServiceDetails("remoteski", "", "")
 		keep := hub.keepThisConnection(nil, true, remoteService)
 		assert.True(t, keep, "should keep when no existing connection")
 	})
@@ -445,7 +447,7 @@ func TestCoordinateConnectionInitiationsBasics(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 
 		ski := "queuedski"
-		service := api.NewServiceDetails(ski, "", "")
+		service, _ := api.NewServiceDetails(ski, "", "")
 		service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateQueued, nil))
 
 		entry := &api.MdnsEntry{Identifier: ski}
@@ -566,7 +568,7 @@ func TestConnectFoundServiceCertificateErrors(t *testing.T) {
 		// This tests the error path where cert.SkiFromCertificate fails
 		hub := setupTestHubForTimer(t)
 
-		service := api.NewServiceDetails("testski", "", "")
+		service, _ := api.NewServiceDetails("testski", "", "")
 
 		// Try to connect to non-existent service
 		err := hub.connectFoundService(service, "localhost", "9999", "/")
@@ -662,7 +664,7 @@ func TestConnectionLimit(t *testing.T) {
 		hub.muxCon.Unlock()
 
 		// Try to connect to a new service
-		service := api.NewServiceDetails("ski3", "", "")
+		service, _ := api.NewServiceDetails("ski3", "", "")
 		err := hub.connectFoundService(service, "localhost", "9999", "/")
 
 		assert.Error(t, err)
@@ -683,7 +685,7 @@ func TestConnectionLimit(t *testing.T) {
 		hub.muxCon.Unlock()
 
 		// Try to connect to a new service
-		service := api.NewServiceDetails("ski3", "", "")
+		service, _ := api.NewServiceDetails("ski3", "", "")
 		err := hub.connectFoundService(service, "localhost", "9999", "/")
 
 		// Error will occur for other reasons (connection failed) but not due to limit

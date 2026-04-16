@@ -56,7 +56,7 @@ func (s *HubConnectionsTimerSuite) BeforeTest(suiteName, testName string) {
 	s.shipConnection.EXPECT().DataHandler().Return(s.wsDataWriter).Maybe()
 	s.shipConnection.EXPECT().ShipHandshakeState().Return(model.SmeStateComplete, nil).Maybe()
 
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 	var err error
 	s.sut, err = newTestHub(s.hubReader, s.mdnsService, 4567, certificate, localService, nil)

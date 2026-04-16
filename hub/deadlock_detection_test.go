@@ -49,7 +49,8 @@ func TestHubMutexOrderingDeadlock(t *testing.T) {
 		// Operation 3: Connection lookup (needs muxCon)
 		go func() {
 			defer wg.Done()
-			_ = hub.connectionForService(api.NewServiceDetails("ski-1", "", ""))
+			svc, _ := api.NewServiceDetails("ski-1", "", "")
+			_ = hub.connectionForService(svc)
 		}()
 	}
 
@@ -101,7 +102,8 @@ func TestConnectionRegistrationRace(t *testing.T) {
 			defer wg.Done()
 
 			// Simulate the pattern from HandleConnectionClosed
-			existingConn := hub.connectionForService(api.NewServiceDetails(testSKI, "", ""))
+			svc, _ := api.NewServiceDetails(testSKI, "", "")
+			existingConn := hub.connectionForService(svc)
 			if existingConn == conn1 {
 				// Small delay to increase race probability
 				time.Sleep(time.Microsecond)
@@ -127,7 +129,8 @@ func TestConnectionRegistrationRace(t *testing.T) {
 		wg.Wait()
 
 		// Verify final state
-		finalConn := hub.connectionForService(api.NewServiceDetails(testSKI, "", ""))
+		svc, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(svc)
 
 		// With the race condition, we might have:
 		// 1. No connection (conn1 deleted, conn2 not registered due to timing)
@@ -198,7 +201,8 @@ func TestAtomicUnregisterIfMatch(t *testing.T) {
 		wg.Wait()
 
 		// Verify final state is consistent
-		finalConn := hub.connectionForService(api.NewServiceDetails(testSKI, "", ""))
+		svc, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(svc)
 
 		// With atomic operations, we should have either:
 		// 1. conn2 (if unregister succeeded and register happened after)
@@ -311,7 +315,8 @@ func TestHubStressWithAllOperations(t *testing.T) {
 				default:
 					idx := workerID % numSKIs
 					monitorOperation(func() {
-						_ = hub.connectionForService(api.NewServiceDetails(skis[idx], "", ""))
+						svc, _ := api.NewServiceDetails(skis[idx], "", "")
+						_ = hub.connectionForService(svc)
 					}, &lookups)
 					time.Sleep(time.Microsecond * 50)
 				}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/enbility/ship-go/util"
@@ -72,7 +73,7 @@ type ServiceDetails struct {
 	mux sync.Mutex
 }
 
-// create a new ServiceDetails record
+// NewServiceDetails creates a new ServiceDetails record.
 //
 // This function initializes a new ServiceDetails instance with the provided
 // SKI, fingerprint, and ship ID. It sets the initial connection state to
@@ -82,16 +83,18 @@ type ServiceDetails struct {
 //   - ski: The SKI (Subject Key Identifier) of the service. Required if fingerprint is not provided
 //   - fingerprint: The expected certificate fingerprint of the service. Required if SKI is not provided
 //   - shipid: The SHIP ID of the service. Required if fingerprint is provided and ski is not provided
-func NewServiceDetails(ski, fingerprint, shipid string) *ServiceDetails {
+//
+// Returns the new new ServiceDetails. If there is an error, nil will be returned with an error
+func NewServiceDetails(ski, fingerprint, shipid string) (*ServiceDetails, error) {
 	connState := NewConnectionStateDetail(ConnectionStateNone, nil)
 
 	// check if we have all the required parameters
 	if ski == "" && fingerprint == "" {
-		return nil
+		return nil, fmt.Errorf("SKI or fingerprint is required")
 	}
 
 	if ski == "" && fingerprint != "" && shipid == "" {
-		return nil
+		return nil, fmt.Errorf("SHIP ID or SKI are required when only fingerprint is provided")
 	}
 
 	service := &ServiceDetails{
@@ -102,7 +105,7 @@ func NewServiceDetails(ski, fingerprint, shipid string) *ServiceDetails {
 		pairingType:           PairingTypeDefault, // default to traditional pairing
 	}
 
-	return service
+	return service, nil
 }
 
 // Fingerprint returns the expected certificate fingerprint of the service.
@@ -315,7 +318,6 @@ func (s *ServiceDetails) ToServiceIdentity() ServiceIdentity {
 		IPv4:        s.ipv4,
 	}
 }
-
 
 // SKIToServiceIdentity creates a minimal ServiceIdentity from just an SKI.
 // This is a helper for converting SKI-only callbacks to ServiceIdentity format.

@@ -68,7 +68,7 @@ func (s *HubConnectionsServerSuite) BeforeTest(suiteName, testName string) {
 	s.shipConnection.EXPECT().DataHandler().Return(s.wsDataWriter).Maybe()
 	s.shipConnection.EXPECT().ShipHandshakeState().Return(model.SmeStateComplete, nil).Maybe()
 
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 	var err error
 	s.sut, err = newTestHub(s.hubReader, s.mdnsService, 4567, certificate, localService, nil)
@@ -93,7 +93,7 @@ func (s *HubConnectionsServerSuite) Test_SendWSCloseMessage() {
 	assert.Nil(s.T(), err)
 
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	hub, err := newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, nil)
 	assert.NotNil(s.T(), hub)

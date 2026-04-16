@@ -26,7 +26,7 @@ func (suite *PairingCallbacksTestSuite) TestPairingServiceReaderInterface_Device
 	}
 
 	// Test service
-	testService := NewServiceDetails("testski", "test-fingerprint", "test-ship-id")
+	testService, _ := NewServiceDetails("testski", "test-fingerprint", "test-ship-id")
 
 	reader.DeviceAutoTrustRemovedViaReplacementLogic(testService, "15-minute timeout expired")
 
@@ -97,7 +97,7 @@ func (suite *PairingCallbacksTestSuite) TestCallbackReasonStrings() {
 
 			mockReader := &mockPairingReader{}
 			reader := &testPairingServiceReader{mockReader: mockReader}
-			testService := NewServiceDetails("testski"+tc.scenario, "", "")
+			testService, _ := NewServiceDetails("testski"+tc.scenario, "", "")
 
 			// Call with expected reason string
 			reader.DeviceAutoTrustRemovedViaReplacementLogic(testService, tc.expectedReason)
@@ -115,7 +115,7 @@ func (suite *PairingCallbacksTestSuite) TestCallbackServiceDetailsHandling() {
 	reader := &testPairingServiceReader{mockReader: mockReader}
 
 	// Test with complete service details
-	fullService := NewServiceDetails("fullski", "full-fingerprint", "full-ship-id")
+	fullService, _ := NewServiceDetails("fullski", "full-fingerprint", "full-ship-id")
 	reader.DeviceAutoTrustRemovedViaReplacementLogic(fullService, "test reason")
 
 	assert.Equal(suite.T(), "fullski", mockReader.lastRemovedService.SKI())
@@ -123,7 +123,7 @@ func (suite *PairingCallbacksTestSuite) TestCallbackServiceDetailsHandling() {
 	assert.Equal(suite.T(), "full-ship-id", mockReader.lastRemovedService.ShipID())
 
 	// Test with minimal service details
-	minimalService := NewServiceDetails("minimalski", "", "")
+	minimalService, _ := NewServiceDetails("minimalski", "", "")
 	reader.DeviceAutoTrustRemovedViaReplacementLogic(minimalService, "minimal test")
 
 	assert.Equal(suite.T(), "minimalski", mockReader.lastRemovedService.SKI())

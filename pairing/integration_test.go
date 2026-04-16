@@ -67,11 +67,11 @@ func (suite *IntegrationTestSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Setup device configurations using SHIP spec test vectors
-	suite.devAService = api.NewServiceDetails("heatpumpski", "", "")
+	suite.devAService, _ = api.NewServiceDetails("heatpumpski", "", "")
 	suite.devAService.SetShipID("i:983327_u:C8277H008F-3") // devA from spec
 	suite.devAService.SetFingerprint("C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943")
 
-	suite.devZService = api.NewServiceDetails("smgwski", "", "")
+	suite.devZService, _ = api.NewServiceDetails("smgwski", "", "")
 	suite.devZService.SetShipID("i:46925_u:43652bk-2-gt1") // devZ from spec
 
 	suite.sharedSecret = api.PairingSecret(mustHexToBytes("7A37DCF81BDB50F8E92CFA4160CCB3DE")) // From spec

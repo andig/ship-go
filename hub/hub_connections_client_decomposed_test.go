@@ -33,7 +33,7 @@ type HubConnectionsDecomposedTestSuite struct {
 
 func (s *HubConnectionsDecomposedTestSuite) SetupTest() {
 	s.localSKI = "testlocalski"
-	s.localService = api.NewServiceDetails(s.localSKI, "", "")
+	s.localService, _ = api.NewServiceDetails(s.localSKI, "", "")
 
 	cert, err := cert.CreateCertificate("test", "test", "DE", "test")
 	require.NoError(s.T(), err)
@@ -546,7 +546,7 @@ func (s *HubConnectionsDecomposedTestSuite) Test_ShouldAttemptConnection() {
 			name: "paired_service",
 			setupService: func() *api.ServiceDetails {
 				// Use ServiceForIdentifier which handles normalization and creation
-				service := api.NewServiceDetails("pairedski", "", "")
+				service, _ := api.NewServiceDetails("pairedski", "", "")
 				service.SetTrusted(true)
 				success := s.hub.addService(service)
 				assert.True(s.T(), success)
@@ -558,7 +558,7 @@ func (s *HubConnectionsDecomposedTestSuite) Test_ShouldAttemptConnection() {
 			name: "unpaired_unqueued_service",
 			setupService: func() *api.ServiceDetails {
 				// Use ServiceForIdentifier which handles normalization and creation
-				service := api.NewServiceDetails("unpairedski", "", "")
+				service, _ := api.NewServiceDetails("unpairedski", "", "")
 				service.SetTrusted(false)
 				service.ConnectionStateDetail().SetState(api.ConnectionStateNone)
 				success := s.hub.addService(service)

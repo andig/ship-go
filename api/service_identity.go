@@ -125,10 +125,10 @@ func (s ServiceIdentity) String() string {
 
 // ToServiceDetails converts a ServiceIdentity to a ServiceDetails object.
 // This is useful for interfacing with internal APIs that use ServiceDetails.
-func (s ServiceIdentity) ToServiceDetails() *ServiceDetails {
-	serviceDetails := NewServiceDetails(s.SKI, s.Fingerprint, s.ShipID)
-	if serviceDetails == nil {
-		return nil
+func (s ServiceIdentity) ToServiceDetails() (*ServiceDetails, error) {
+	serviceDetails, err := NewServiceDetails(s.SKI, s.Fingerprint, s.ShipID)
+	if err != nil {
+		return nil, err
 	}
 
 	serviceDetails.SetPairingType(s.PairingType)
@@ -136,5 +136,5 @@ func (s ServiceIdentity) ToServiceDetails() *ServiceDetails {
 		serviceDetails.SetIPv4(s.IPv4)
 	}
 
-	return serviceDetails
+	return serviceDetails, nil
 }

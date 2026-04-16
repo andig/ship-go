@@ -72,11 +72,11 @@ func (suite *HubPairingCompositionTestSuite) SetupTest() {
 
 	// Setup test data
 	suite.certificate = tls.Certificate{}
-	suite.localService = api.NewServiceDetails("hubtestski", "", "")
-	suite.localService.SetShipID("i:123_u:hub-test")
-
-	// Create Hub (note: not started here to avoid port conflicts)
 	var err error
+	suite.localService, err = api.NewServiceDetails("hubtestski", "", "")
+	require.NoError(suite.T(), err)
+	suite.localService.SetShipID("i:123_u:hub-test")
+	// Create Hub (note: not started here to avoid port conflicts)
 	suite.sut, err = newTestHub(
 		suite.mockHubReader,
 		suite.mockMdns,
@@ -208,7 +208,8 @@ func (s *OnPairingFailureTestSuite) SetupTest() {
 	var err error
 	s.certificate, err = cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
 	require.NoError(s.T(), err)
-	s.localService = api.NewServiceDetails("hubtestski", "", "")
+	s.localService, err = api.NewServiceDetails("hubtestski", "", "")
+	require.NoError(s.T(), err)
 
 	// Create Hub
 	s.hub, err = newTestHub(
@@ -245,22 +246,22 @@ func (s *OnPairingFailureTestSuite) TestOnPairingFailure_ServiceCreation() {
 
 func (s *OnPairingFailureTestSuite) TestOnPairingFailure_EmptyFingerprint() {
 	// Test behavior with empty fingerprint parameter
-	// This creates NewServiceDetails("", "", shipID) which returns nil, causing panic
+	// NewServiceDetails("", "", shipID) returns an error; OnPairingFailure logs and returns gracefully
 
-	// Act & Assert - This currently panics due to nil ServiceDetails
-	assert.Panics(s.T(), func() {
+	// Act & Assert - Should not panic; invalid identifiers are handled via error return
+	assert.NotPanics(s.T(), func() {
 		s.hub.OnPairingFailure(s.testShipID, "", s.testError)
-	}, "OnPairingFailure panics when NewServiceDetails returns nil")
+	}, "OnPairingFailure should not panic for invalid identifiers")
 }
 
 func (s *OnPairingFailureTestSuite) TestOnPairingFailure_EmptyShipID() {
 	// Test behavior with empty ShipID parameter
-	// This creates NewServiceDetails("", fingerprint, "") which returns nil per API logic
+	// NewServiceDetails("", fingerprint, "") returns an error; OnPairingFailure logs and returns gracefully
 
-	// Act & Assert - This panics due to nil ServiceDetails when fingerprint exists but shipID is empty
-	assert.Panics(s.T(), func() {
+	// Act & Assert - Should not panic; invalid identifiers are handled via error return
+	assert.NotPanics(s.T(), func() {
 		s.hub.OnPairingFailure("", s.testFingerprint, s.testError)
-	}, "OnPairingFailure panics when NewServiceDetails returns nil")
+	}, "OnPairingFailure should not panic for invalid identifiers")
 }
 
 // Callback Invocation Patterns (4 test cases)
@@ -686,12 +687,12 @@ func (s *OnPairingFailureTestSuite) TestOnPairingFailure_ConcurrentWithOtherOper
 
 func (s *OnPairingFailureTestSuite) TestOnPairingFailure_AllNilParameters() {
 	// Test behavior when all parameters are nil/empty
-	// This creates NewServiceDetails("", "", "") which returns nil, causing panic
+	// NewServiceDetails("", "", "") returns an error; OnPairingFailure logs and returns gracefully
 
-	// Act & Assert - This currently panics due to nil ServiceDetails
-	assert.Panics(s.T(), func() {
+	// Act & Assert - Should not panic; invalid identifiers are handled via error return
+	assert.NotPanics(s.T(), func() {
 		s.hub.OnPairingFailure("", "", nil)
-	}, "OnPairingFailure panics when all parameters result in nil ServiceDetails")
+	}, "OnPairingFailure should not panic when all parameters are empty")
 }
 
 func (s *OnPairingFailureTestSuite) TestOnPairingFailure_NilErrorHandling() {
@@ -785,7 +786,8 @@ func (s *OnPairingSuccessTestSuite) SetupTest() {
 	var err error
 	s.certificate, err = cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
 	require.NoError(s.T(), err)
-	s.localService = api.NewServiceDetails("hubtestski", "", "")
+	s.localService, err = api.NewServiceDetails("hubtestski", "", "")
+	require.NoError(s.T(), err)
 
 	// Create Hub
 	s.hub, err = newTestHub(
@@ -831,7 +833,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_ExistingServiceUpdate()
 	// Test updating existing service with empty ShipID
 
 	// Setup - Create existing service with same fingerprint but empty ShipID
-	existingService := api.NewServiceDetails("existingski", s.testFingerprint, "")
+	existingService, err := api.NewServiceDetails("existingski", s.testFingerprint, "")
+	require.NoError(s.T(), err)
 	existingService.SetTrusted(false) // Not trusted initially
 	success := s.hub.addService(existingService)
 	require.True(s.T(), success, "Should add existing service")
@@ -851,7 +854,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_ExistingServiceSameShip
 	// Test updating existing service with matching ShipID
 
 	// Setup - Create existing service with same fingerprint and ShipID
-	existingService := api.NewServiceDetails("existingski", s.testFingerprint, s.testShipID)
+	existingService, err := api.NewServiceDetails("existingski", s.testFingerprint, s.testShipID)
+	require.NoError(s.T(), err)
 	existingService.SetTrusted(false)
 	success := s.hub.addService(existingService)
 	require.True(s.T(), success, "Should add existing service")
@@ -871,7 +875,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_SecurityViolationDiffer
 	// Test security check: same fingerprint with different ShipID from trusted service
 
 	// Setup - Create trusted existing service with same fingerprint but different ShipID
-	existingService := api.NewServiceDetails("existingski", s.testFingerprint, s.otherShipID)
+	existingService, err := api.NewServiceDetails("existingski", s.testFingerprint, s.otherShipID)
+	require.NoError(s.T(), err)
 	existingService.SetTrusted(true) // Already trusted with different ShipID
 	success := s.hub.addService(existingService)
 	require.True(s.T(), success, "Should add existing service")
@@ -927,7 +932,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_AddCuReplacementScenari
 	// Test AddCu device replacement scenario
 
 	// Setup - Create existing trusted AddCu device
-	existingAddCu := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	existingAddCu, err := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	require.NoError(s.T(), err)
 	existingAddCu.SetTrusted(true)
 	existingAddCu.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(existingAddCu)
@@ -951,7 +957,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_NoReplacementSameFinger
 	// Test that same fingerprint with empty ShipID gets updated (not security violation)
 
 	// Setup - Create existing trusted AddCu device with empty ShipID
-	existingAddCu := api.NewServiceDetails("existingski", s.testFingerprint, "")
+	existingAddCu, err := api.NewServiceDetails("existingski", s.testFingerprint, "")
+	require.NoError(s.T(), err)
 	existingAddCu.SetTrusted(true)
 	existingAddCu.SetPairingType(api.PairingTypeDefault) // Will be updated to AddCu
 	success := s.hub.addService(existingAddCu)
@@ -972,7 +979,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_AddCuTimerInteraction()
 	// Test that pairing announcements are queued when replacement timer is running (security fix)
 
 	// Setup - Create existing AddCu and simulate timer
-	existingAddCu := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	existingAddCu, err := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	require.NoError(s.T(), err)
 	existingAddCu.SetTrusted(true)
 	existingAddCu.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(existingAddCu)
@@ -1018,7 +1026,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_TrustFromUntrustedServi
 	// Test transition from untrusted to trusted service
 
 	// Setup - Create untrusted service
-	untrustedService := api.NewServiceDetails("testski", s.testFingerprint, "")
+	untrustedService, err := api.NewServiceDetails("testski", s.testFingerprint, "")
+	require.NoError(s.T(), err)
 	untrustedService.SetTrusted(false)
 	success := s.hub.addService(untrustedService)
 	require.True(s.T(), success, "Should add untrusted service")
@@ -1042,7 +1051,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_MaintainTrustFromTruste
 	// Test that already trusted service maintains trust
 
 	// Setup - Create already trusted service
-	trustedService := api.NewServiceDetails("testski", s.testFingerprint, s.testShipID)
+	trustedService, err := api.NewServiceDetails("testski", s.testFingerprint, s.testShipID)
+	require.NoError(s.T(), err)
 	trustedService.SetTrusted(true)
 	success := s.hub.addService(trustedService)
 	require.True(s.T(), success, "Should add trusted service")
@@ -1147,7 +1157,8 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_ReplacementAndSuccessCa
 	// Test that both replacement and success callbacks are invoked in replacement scenario
 
 	// Setup existing AddCu device
-	existingAddCu := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	existingAddCu, err := api.NewServiceDetails("existingski", s.otherFingerprint, s.otherShipID)
+	require.NoError(s.T(), err)
 	existingAddCu.SetTrusted(true)
 	existingAddCu.SetPairingType(api.PairingTypeAddCu)
 	success := s.hub.addService(existingAddCu)
@@ -1370,7 +1381,7 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_ServiceUpdateInPlace() 
 	// Test that existing service is updated in place rather than replaced
 
 	// Setup - Create service and get reference
-	existingService := api.NewServiceDetails("testski", s.testFingerprint, "")
+	existingService, _ := api.NewServiceDetails("testski", s.testFingerprint, "")
 	success := s.hub.addService(existingService)
 	require.True(s.T(), success, "Should add existing service")
 
@@ -1529,7 +1540,7 @@ func (suite *HubPairingQRTestSuite) SetupTest() {
 	suite.Require().NoError(err)
 
 	// Setup test service with known values
-	suite.localService = api.NewServiceDetails("hubtestski", "", "")
+	suite.localService, _ = api.NewServiceDetails("hubtestski", "", "")
 	suite.localService.SetShipID("i:123_u:hub-test")
 
 	// Create minimal pairing configuration to enable QR generation functionality
@@ -1761,7 +1772,7 @@ func (suite *QRAnnouncementTestSuite) SetupTest() {
 		Secret: []byte("0123456789abcdef"),
 	}
 
-	localService := api.NewServiceDetails("testlocalski", "", "testshipid")
+	localService, _ := api.NewServiceDetails("testlocalski", "", "testshipid")
 
 	// Create a proper test certificate
 	certificate, err := cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
@@ -2030,7 +2041,7 @@ func (s *AutoPairingTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Create Hub instance for testing
-	localService := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
+	localService, _ := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
 	s.hub, err = newTestHub(s.mockReader, s.mockMdns, 0, certificate, localService, nil)
 	require.NoError(s.T(), err)
 }
@@ -2084,7 +2095,7 @@ func (s *AutoPairingImplementationTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Create Hub instance for testing
-	localService := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
+	localService, _ := api.NewServiceDetails(s.testSKI, s.testFingerprint, s.testShipID)
 	s.hub, err = newTestHub(s.mockReader, s.mockMdns, 0, certificate, localService, nil)
 	require.NoError(s.T(), err)
 }
@@ -2144,7 +2155,7 @@ func (s *AutoPairingSecurityTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Create Hub instance for testing
-	localService := api.NewServiceDetails("localsecurityski", "", "")
+	localService, _ := api.NewServiceDetails("localsecurityski", "", "")
 	s.hub, err = newTestHub(s.mockReader, s.mockMdns, 0, certificate, localService, nil)
 	require.NoError(s.T(), err)
 }
@@ -2328,7 +2339,7 @@ func (suite *EnablePairingListenerTestSuite) SetupTest() {
 	suite.certificate, err = cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
 	suite.Require().NoError(err)
 
-	suite.localService = api.NewServiceDetails("hubtestski", "", "")
+	suite.localService, _ = api.NewServiceDetails("hubtestski", "", "")
 	suite.localService.SetShipID("i:123_u:hub-test")
 
 	// Test secrets
@@ -2695,7 +2706,7 @@ func (suite *HubPairingCompositionTestSuite) TestSetPairingService_NilService() 
 func (suite *HubPairingCompositionTestSuite) TestCancelPairingWithSKI() {
 	// Setup a service for testing
 	testSKI := "canceltestski"
-	service := api.NewServiceDetails(testSKI, "", "")
+	service, _ := api.NewServiceDetails(testSKI, "", "")
 	service.SetTrusted(true)
 	service.ConnectionStateDetail().SetState(api.ConnectionStateTrusted)
 
@@ -2726,7 +2737,7 @@ func (suite *HubPairingCompositionTestSuite) TestCancelPairingWithSKI_ServiceNot
 func (suite *HubPairingCompositionTestSuite) TestCancelPairingWithSKI_WithConnection() {
 	// Setup a service with a mock connection
 	testSKI := "connectedtestski"
-	service := api.NewServiceDetails(testSKI, "", "")
+	service, _ := api.NewServiceDetails(testSKI, "", "")
 	service.SetTrusted(true)
 	suite.sut.addService(service)
 
@@ -2772,7 +2783,7 @@ func (suite *HubPairingCompositionTestSuite) TestOnPairingSuccess_ExistingServic
 	// with empty ShipID, then SHIP Pairing Service completes and should update ShipID
 
 	// Step 1: Create service as if it came from connection with empty ShipID
-	existingService := api.NewServiceDetails(testSKI, testFingerprint, "") // Empty ShipID like server connection
+	existingService, _ := api.NewServiceDetails(testSKI, testFingerprint, "") // Empty ShipID like server connection
 	require.True(suite.T(), suite.sut.addService(existingService))
 
 	// Verify initial state - ShipID is empty
@@ -2933,7 +2944,7 @@ func (suite *HubPairingCompositionTestSuite) TestInitializePairingServiceWithCon
 	basicMdns := mocks.NewMdnsInterface(suite.T())
 	basicMdns.EXPECT().Shutdown().Maybe()
 
-	localService := api.NewServiceDetails("testski", "", "")
+	localService, _ := api.NewServiceDetails("testski", "", "")
 	certificate := tls.Certificate{}
 
 	hubWithBasicMdns, err := newTestHub(suite.mockHubReader, basicMdns, 4570, certificate, localService, nil)

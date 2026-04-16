@@ -55,7 +55,8 @@ func (suite *HubIntegrationTestSuite) SetupTest() {
 	suite.localCert, err = x509.ParseCertificate(suite.certificate.Certificate[0])
 	require.NoError(suite.T(), err)
 
-	suite.localService = api.NewServiceDetails("localtestski"+suite.T().Name(), "", "") // Unique per test
+	suite.localService, err = api.NewServiceDetails("localtestski"+suite.T().Name(), "", "") // Unique per test
+	require.NoError(suite.T(), err)
 	suite.localService.SetShipID("i:123_u:test-local")
 
 	// Create fresh pairing announcer for each test

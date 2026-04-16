@@ -42,7 +42,8 @@ func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Simulate HandleConnectionClosed logic
-			if existingC := hub.connectionForService(api.NewServiceDetails(testSKI, "", "")); existingC != nil {
+			svcDetails, _ := api.NewServiceDetails(testSKI, "", "")
+			if existingC := hub.connectionForService(svcDetails); existingC != nil {
 				// Small delay to increase race probability
 				time.Sleep(time.Microsecond)
 				if existingC == conn1 {
@@ -62,7 +63,8 @@ func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 		wg.Wait()
 
 		// Verify state is consistent
-		finalConn := hub.connectionForService(api.NewServiceDetails(testSKI, "", ""))
+		testSvcDetails, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(testSvcDetails)
 		switch finalConn {
 		case nil, conn2:
 			// Expected: either no connection or the second connection
@@ -130,7 +132,8 @@ func TestUnregisterConnectionIfMatch(t *testing.T) {
 			assert.Equal(t, tt.expectSuccess, success)
 
 			// Verify connection state
-			finalConn := hub.connectionForService(api.NewServiceDetails(testSKI, "", ""))
+			testSvcDetails2, _ := api.NewServiceDetails(testSKI, "", "")
+			finalConn := hub.connectionForService(testSvcDetails2)
 			if tt.expectRemoved {
 				assert.Nil(t, finalConn)
 			} else {
@@ -179,7 +182,8 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 			case 0: // Register
 				hub.registerConnection(conn)
 			case 1: // Read
-				_ = hub.connectionForService(api.NewServiceDetails(ski, "", ""))
+				skiSvcDetails, _ := api.NewServiceDetails(ski, "", "")
+				_ = hub.connectionForService(skiSvcDetails)
 			case 2: // Unregister if match
 				hub.UnregisterConnectionIfMatch(ski, conn)
 			}
@@ -190,7 +194,8 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 
 	// Verify no panics and state is consistent
 	for i, ski := range skis {
-		conn := hub.connectionForService(api.NewServiceDetails(ski, "", ""))
+		skiSvc, _ := api.NewServiceDetails(ski, "", "")
+		conn := hub.connectionForService(skiSvc)
 		if conn != nil {
 			assert.Equal(t, connections[i], conn, "Connection mismatch for SKI %s", ski)
 		}
@@ -208,7 +213,7 @@ func setupTestHub(t *testing.T) *Hub {
 	hubReader.EXPECT().RemoteServiceDisconnected(mock.AnythingOfType("string")).Maybe()
 	hubReader.EXPECT().ServiceUpdated(mock.AnythingOfType("*api.ServiceIdentity")).Maybe()
 
-	service := api.NewServiceDetails("testski", "", "")
+	service, _ := api.NewServiceDetails("testski", "", "")
 	service.SetShipID("test-ship-id")
 
 	// Create a dummy certificate for testing

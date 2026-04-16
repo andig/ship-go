@@ -392,7 +392,10 @@ func main() {
 	fmt.Printf("📜 Client SKI: %s\n", ski)
 
 	// Create service details for this client
-	serviceDetails := api.NewServiceDetails(ski, "", "")
+	serviceDetails, err := api.NewServiceDetails(ski, "", "")
+	if err != nil {
+		log.Fatal("Failed to create service details:", err)
+	}
 
 	// Create client hub reader
 	clientReader := NewClientHubReader()

@@ -24,7 +24,8 @@ func TestHub_Start_ReturnsError_WhenWebSocketFails(t *testing.T) {
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	// Use an invalid port to guarantee immediate failure
 	hub, err := newTestHub(hubReader, mdnsService, -1, certificate, localService, nil)
@@ -53,7 +54,8 @@ func TestHub_Start_ReturnsError_WhenMdnsFails(t *testing.T) {
 	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(mdnsError)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)
@@ -81,7 +83,8 @@ func TestHub_Start_Success(t *testing.T) {
 	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)
@@ -105,7 +108,8 @@ func TestHub_Shutdown_GracefulWithTimeout(t *testing.T) {
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)
@@ -164,7 +168,8 @@ func TestHub_Shutdown_TimeoutStuckConnections(t *testing.T) {
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)
@@ -223,7 +228,8 @@ func TestHub_HTTPServerShutdown_WithContext(t *testing.T) {
 	mdnsService.EXPECT().Shutdown()
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, err := api.NewServiceDetails("localSKI", "", "")
+	assert.NoError(t, err)
 
 	hub, err := newTestHub(hubReader, mdnsService, 0, certificate, localService, nil)
 	assert.NoError(t, err)

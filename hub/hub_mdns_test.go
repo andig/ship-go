@@ -139,7 +139,8 @@ func TestReportMdnsEntries_WithUnpairedService(t *testing.T) {
 	}
 
 	ski := "SKI1"
-	service := api.NewServiceDetails(ski, "", "")
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
 	service.SetTrusted(false) // Not paired
 	hub.remoteServices = append(hub.remoteServices, service)
 
@@ -178,7 +179,8 @@ func TestReportMdnsEntries_WithTrustedServiceAndIPv4(t *testing.T) {
 	}
 
 	ski := "0123456789abcdef0123456789abcdefffffffff"
-	service := api.NewServiceDetails(ski, "", "")
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
 	service.SetTrusted(true)                                            // Paired
 	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
 	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued) // Queued for connection
@@ -234,7 +236,8 @@ func TestReportMdnsEntries_ShipIDCheck_Valid(t *testing.T) {
 	ski := "0123456789abcdef0123456789abcdefffffffff"
 	shipId := "ID1"
 	fingerprint := "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
-	service := api.NewServiceDetails("", fingerprint, shipId)
+	service, err := api.NewServiceDetails("", fingerprint, shipId)
+	assert.NoError(t, err)
 	service.SetTrusted(true)                                            // Paired
 	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
 	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued) // Queued for connection
@@ -391,7 +394,8 @@ func TestReportMdnsEntries_WithNonPairedTrustedService(t *testing.T) {
 	}
 
 	ski := "SKI1"
-	service := api.NewServiceDetails(ski, "", "")
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
 	service.SetTrusted(true)                                               // Trusted but not paired through IsRemoteServiceForSKIPaired
 	service.ConnectionStateDetail().SetState(api.ConnectionStateCompleted) // Not queued
 	hub.remoteServices = append(hub.remoteServices, service)

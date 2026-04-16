@@ -82,7 +82,10 @@ func main() {
 	fmt.Printf("📜 Device SKI (identifier): %s\n", ski)
 
 	// Step 2: Create service details for mDNS announcement
-	serviceDetails := api.NewServiceDetails(ski, "", "")
+	serviceDetails, err := api.NewServiceDetails(ski, "", "")
+	if err != nil {
+		log.Fatal("Failed to create service details:", err)
+	}
 
 	// Step 3: Create mDNS manager for device discovery
 	// Parameters: SKI, brand, model, type, serial, categories, shipID, serviceName, port, interfaces, provider

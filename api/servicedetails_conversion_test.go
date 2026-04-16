@@ -7,7 +7,10 @@ import (
 // TestServiceDetails_ToServiceIdentity tests the conversion from ServiceDetails to ServiceIdentity
 func TestServiceDetails_ToServiceIdentity(t *testing.T) {
 	// Create a ServiceDetails with all fields populated
-	service := NewServiceDetails("test-ski-123", "test-fingerprint-456", "test-ship-789")
+	service, err := NewServiceDetails("test-ski-123", "test-fingerprint-456", "test-ship-789")
+	if err != nil {
+		t.Fatal(err)
+	}
 	service.SetPairingType(PairingTypeAddCu)
 	service.SetIPv4("192.168.1.100")
 
@@ -39,7 +42,10 @@ func TestServiceDetails_ToServiceIdentity(t *testing.T) {
 // TestServiceDetails_ToServiceIdentity_MinimalData tests conversion with minimal data
 func TestServiceDetails_ToServiceIdentity_MinimalData(t *testing.T) {
 	// Create ServiceDetails with only required data (SKI)
-	service := NewServiceDetails("minimal-ski", "", "")
+	service, err := NewServiceDetails("minimal-ski", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Convert to ServiceIdentity
 	identity := service.ToServiceIdentity()
@@ -70,7 +76,10 @@ func TestServiceDetails_ToServiceIdentity_MinimalData(t *testing.T) {
 
 // TestServiceDetails_ToServiceIdentity_ThreadSafety tests that conversion is thread-safe
 func TestServiceDetails_ToServiceIdentity_ThreadSafety(t *testing.T) {
-	service := NewServiceDetails("thread-test-ski", "fp", "ship")
+	service, err := NewServiceDetails("thread-test-ski", "fp", "ship")
+	if err != nil {
+		t.Fatal(err)
+	}
 	service.SetPairingType(PairingTypeAddCu)
 
 	// Multiple conversions should be safe (using thread-safe getter methods)
@@ -95,7 +104,10 @@ func TestServiceDetails_ToServiceIdentity_ThreadSafety(t *testing.T) {
 
 // TestServiceDetails_ToServiceIdentity_DataIntegrity tests that internal ServiceDetails state is not exposed
 func TestServiceDetails_ToServiceIdentity_DataIntegrity(t *testing.T) {
-	service := NewServiceDetails("integrity-test", "fp", "ship")
+	service, err := NewServiceDetails("integrity-test", "fp", "ship")
+	if err != nil {
+		t.Fatal(err)
+	}
 	service.SetTrusted(true) // This should NOT be in ServiceIdentity
 
 	_ = service.ToServiceIdentity()

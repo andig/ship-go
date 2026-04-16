@@ -179,10 +179,12 @@ func (suite *SpecificationIntegrationTestSuite) setupSpecificationTestData() {
 	assert.Equal(suite.T(), "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4", devZFingerprint, "devZ fingerprint should match spec")
 
 	// Create service details from specification data
-	suite.devAService = api.NewServiceDetails(devASKI, devAFingerprint, "")
+	suite.devAService, err = api.NewServiceDetails(devASKI, devAFingerprint, "")
+	assert.NoError(suite.T(), err)
 	suite.devAService.SetShipID("i:983327_u:C8277H008F-3") // devA SHIP ID from spec
 
-	suite.devZService = api.NewServiceDetails(devZSKI, devZFingerprint, "")
+	suite.devZService, err = api.NewServiceDetails(devZSKI, devZFingerprint, "")
+	assert.NoError(suite.T(), err)
 	suite.devZService.SetShipID("i:46925_u:43652bk-2-gt1") // devZ SHIP ID from spec
 }
 

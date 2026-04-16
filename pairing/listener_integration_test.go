@@ -35,7 +35,7 @@ func (s *ListenerIntegrationTestSuite) SetupTest() {
 	s.mockHistory = mocks.NewPairingHistoryProviderInterface(s.T())
 	s.mockHub = mocks.NewPairingHubInterface(s.T())
 
-	s.localService = api.NewServiceDetails("localski", "", "")
+	s.localService, _ = api.NewServiceDetails("localski", "", "")
 	s.localService.SetShipID("local-ship-id")
 
 	s.listener = NewPairingListener(

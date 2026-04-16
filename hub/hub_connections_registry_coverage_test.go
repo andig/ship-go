@@ -24,7 +24,7 @@ type HubConnectionsRegistryCoverageSuite struct {
 
 func (s *HubConnectionsRegistryCoverageSuite) SetupTest() {
 	s.localSKI = "testlocalski"
-	s.localService = api.NewServiceDetails(s.localSKI, "", "")
+	s.localService, _ = api.NewServiceDetails(s.localSKI, "", "")
 
 	cert, err := cert.CreateCertificate("test", "test", "DE", "test")
 	require.NoError(s.T(), err)
@@ -46,7 +46,7 @@ func (s *HubConnectionsRegistryCoverageSuite) SetupTest() {
 // Test_KeepThisConnection_BasicLogic tests the basic logic of connection management
 func (s *HubConnectionsRegistryCoverageSuite) Test_KeepThisConnection_BasicLogic() {
 	// Test that we can register a service
-	removeService := api.NewServiceDetails("remoteski1", "", "")
+	removeService, _ := api.NewServiceDetails("remoteski1", "", "")
 	success := s.hub.addService(removeService)
 	assert.True(s.T(), success)
 
@@ -125,7 +125,7 @@ func (s *HubConnectionsRegistryCoverageSuite) Test_ConnectionRegistration() {
 	assert.Equal(s.T(), mockConn, conn)
 
 	// Create a service for the connection
-	service := api.NewServiceDetails(ski, "", "")
+	service, _ := api.NewServiceDetails(ski, "", "")
 	success := s.hub.addService(service)
 	assert.True(s.T(), success)
 

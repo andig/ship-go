@@ -32,7 +32,7 @@ func setupTestHubForTimer(t *testing.T) *Hub {
 	mdns.EXPECT().RequestMdnsEntries().Maybe()
 	mdns.EXPECT().Shutdown().Maybe()
 
-	service := api.NewServiceDetails("testskitimer", "", "")
+	service, _ := api.NewServiceDetails("testskitimer", "", "")
 	service.SetShipID("test-ship-id")
 
 	// Create a dummy certificate for testing
@@ -126,7 +126,7 @@ func TestConnectionAttemptRunningConcurrency(t *testing.T) {
 	defer hub.Shutdown()
 
 	ski := "test-ski-concurrent"
-	service := api.NewServiceDetails(ski, "", "")
+	service, _ := api.NewServiceDetails(ski, "", "")
 	success := hub.addService(service)
 	assert.True(t, success)
 	service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
@@ -163,7 +163,7 @@ func TestPrepareConnectionInitiationCounterMismatch(t *testing.T) {
 	defer hub.Shutdown()
 
 	ski := "testskicountermismatch"
-	service := api.NewServiceDetails(ski, "", "")
+	service, _ := api.NewServiceDetails(ski, "", "")
 	service.SetConnectionStateDetail(api.NewConnectionStateDetail(api.ConnectionStateTrusted, nil))
 	success := hub.addService(service)
 	assert.True(t, success)
@@ -193,12 +193,12 @@ func TestDoubleConnectionPreventionEdgeCases(t *testing.T) {
 	// Test case 1: Local SKI > Remote SKI, outgoing connection
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService = api.NewServiceDetails("zzzlocalski", "", "") // Higher than remote
+		hub.localService, _ = api.NewServiceDetails("zzzlocalski", "", "") // Higher than remote
 		hub.Start()
 		defer hub.Shutdown()
 
 		remoteSKI := "aaaremoteski"
-		remoteService := api.NewServiceDetails(remoteSKI, "", "")
+		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
 
 		// For outgoing connection, we should keep it (local > remote)
 		shouldKeep := hub.keepThisConnection(nil, false, remoteService)
@@ -208,11 +208,11 @@ func TestDoubleConnectionPreventionEdgeCases(t *testing.T) {
 	// Test case 2: Local SKI < Remote SKI, incoming connection
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService = api.NewServiceDetails("aaalocalski", "", "") // Lower than remote
+		hub.localService, _ = api.NewServiceDetails("aaalocalski", "", "") // Lower than remote
 		hub.Start()
 		defer hub.Shutdown()
 
-		remoteService := api.NewServiceDetails("zzzremoteski", "", "")
+		remoteService, _ := api.NewServiceDetails("zzzremoteski", "", "")
 
 		// For incoming connection, we should keep it (remote > local)
 		shouldKeep := hub.keepThisConnection(nil, true, remoteService)
@@ -222,7 +222,7 @@ func TestDoubleConnectionPreventionEdgeCases(t *testing.T) {
 	// Test case 3: Existing connection scenario
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService = api.NewServiceDetails("zzzhighski", "", "") // Higher than existing
+		hub.localService, _ = api.NewServiceDetails("zzzhighski", "", "") // Higher than existing
 		hub.Start()
 		defer hub.Shutdown()
 
@@ -235,7 +235,7 @@ func TestDoubleConnectionPreventionEdgeCases(t *testing.T) {
 		hub.connections[existingSKI] = existingConn
 		hub.muxCon.Unlock()
 
-		existingService := api.NewServiceDetails(existingSKI, "", "")
+		existingService, _ := api.NewServiceDetails(existingSKI, "", "")
 
 		// New outgoing connection should be kept
 		shouldKeep := hub.keepThisConnection(nil, false, existingService)

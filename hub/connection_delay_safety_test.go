@@ -25,14 +25,16 @@ func TestConnectionDelayRaceConditions(t *testing.T) {
 		mockHubReader := mocks.NewHubReaderInterface(t)
 		mockMdns := mocks.NewMdnsInterface(t)
 		mockMdns.EXPECT().Shutdown().Maybe()
-		localService := api.NewServiceDetails("localski", "", "")
+		localService, err := api.NewServiceDetails("localski", "", "")
+		assert.NoError(t, err)
 		cert := tls.Certificate{}
 
 		hub, err := newTestHub(mockHubReader, mockMdns, 4729, cert, localService, nil)
 		assert.NoError(t, err)
 
 		// Create remote service details
-		remoteService := api.NewServiceDetails("remoteski6000", "", "") // Higher than local
+		remoteService, err := api.NewServiceDetails("remoteski6000", "", "") // Higher than local
+		assert.NoError(t, err)
 
 		// Mock connections
 		mockConn1 := mocks.NewShipConnectionInterface(t)
@@ -90,7 +92,8 @@ func TestConnectionDelayRaceConditions(t *testing.T) {
 		mockHubReader := mocks.NewHubReaderInterface(t)
 		mockMdns := mocks.NewMdnsInterface(t)
 		mockMdns.EXPECT().Shutdown().Maybe()
-		localService := api.NewServiceDetails("localski1000", "", "")
+		localService, err := api.NewServiceDetails("localski1000", "", "")
+		assert.NoError(t, err)
 		cert := tls.Certificate{}
 
 		hub, err := newTestHub(mockHubReader, mockMdns, 4729, cert, localService, nil)

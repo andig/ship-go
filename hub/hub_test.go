@@ -115,7 +115,7 @@ func (s *HubSuite) BeforeTest(suiteName, testName string) {
 	s.shipConnection.EXPECT().DataHandler().Return(s.wsDataWriter).Maybe()
 	s.shipConnection.EXPECT().ShipHandshakeState().Return(model.SmeStateComplete, nil).Maybe()
 
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 	var err error
@@ -131,7 +131,7 @@ func (s *HubSuite) AfterTest(suiteName, testName string) {
 
 func (s *HubSuite) Test_NewConnectionsHub() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	hub, err := newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, nil)
 	assert.NoError(s.T(), err)
@@ -149,7 +149,7 @@ func (s *HubSuite) Test_NewConnectionsHub() {
 
 func (s *HubSuite) Test_NewConnectionHub_PairingConfig() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	secret := api.PairingSecret("test-secret")
 	pairingConfig := api.NewPairingConfig(api.PairingModeAnnouncer, secret)
@@ -166,7 +166,7 @@ func (s *HubSuite) Test_NewConnectionHub_PairingConfig() {
 
 func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForListener() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeListener, secret)
 
@@ -178,7 +178,7 @@ func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForListener() {
 
 func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForBothMode() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeBoth, secret)
 
@@ -190,7 +190,7 @@ func (s *HubSuite) Test_NewHub_RequiresHistoryProviderForBothMode() {
 
 func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForAnnouncer() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeAnnouncer, secret)
 
@@ -202,7 +202,7 @@ func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForAnnouncer() {
 
 func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForOffMode() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	// Should succeed - no history provider needed when pairing is off
 	h, err := NewHub(s.hubReader, s.mdnsService, 4712, tls.Certificate{}, localService, nil, nil)
@@ -212,7 +212,7 @@ func (s *HubSuite) Test_NewHub_AcceptsNilHistoryProviderForOffMode() {
 
 func (s *HubSuite) Test_NewHub_AcceptsValidHistoryProviderForListener() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 	secret := api.PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
 	config := api.NewPairingConfig(api.PairingModeListener, secret)
 
@@ -239,7 +239,7 @@ func (s *HubSuite) Test_AutoAccept() {
 
 func (s *HubSuite) Test_SetupRemoteDevice() {
 	ski := "12af9e"
-	localService := api.NewServiceDetails(ski, "", "")
+	localService, _ := api.NewServiceDetails(ski, "", "")
 
 	hub, err := newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, nil)
 	assert.NoError(s.T(), err)
@@ -373,14 +373,14 @@ func (s *HubSuite) Test_ReportMdnsEntries() {
 	entries[testski1] = &api.MdnsEntry{
 		Ski: testski1,
 	}
-	service1 := api.NewServiceDetails(testski1, "", "")
+	service1, _ := api.NewServiceDetails(testski1, "", "")
 	service1.SetTrusted(true)
 	service1.SetIPv4("127.0.0.1")
 
 	entries[testski2] = &api.MdnsEntry{
 		Ski: testski2,
 	}
-	service2 := api.NewServiceDetails(testski2, "", "")
+	service2, _ := api.NewServiceDetails(testski2, "", "")
 	service2.SetTrusted(true)
 	service2.SetIPv4("127.0.0.1")
 
@@ -403,7 +403,7 @@ func (s *HubSuite) Test_StopAddCuReplacementTimer_NonAddCuService() {
 	// Hub is already created in BeforeTest
 
 	// Create service with non-AddCu pairing type
-	service := api.NewServiceDetails("testski", "", "shipid123")
+	service, _ := api.NewServiceDetails("testski", "", "shipid123")
 	service.SetPairingType(api.PairingTypeDefault) // Not AddCu
 
 	// Should return early without calling tracker
@@ -415,7 +415,7 @@ func (s *HubSuite) Test_StopAddCuReplacementTimer_EmptyShipID() {
 	// Hub is already created in BeforeTest
 
 	// Create AddCu service but with empty ShipID
-	service := api.NewServiceDetails("testski", "", "")
+	service, _ := api.NewServiceDetails("testski", "", "")
 	service.SetPairingType(api.PairingTypeAddCu)
 	// shipID is empty
 
@@ -428,7 +428,7 @@ func (s *HubSuite) Test_StopAddCuReplacementTimer_ValidAddCuService() {
 	// Hub is already created in BeforeTest
 
 	// Create valid AddCu service
-	service := api.NewServiceDetails("testski", "", "shipid123")
+	service, _ := api.NewServiceDetails("testski", "", "shipid123")
 	service.SetPairingType(api.PairingTypeAddCu)
 
 	// Should call tracker.StopTimer with shipID
@@ -440,7 +440,7 @@ func (s *HubSuite) Test_startAddCuReplacementTimersForOfflineDevices_NoAddCuDevi
 	// Test startup with no AddCu devices - should not start any timers
 	
 	// Add a regular trusted device (not AddCu)
-	regularService := api.NewServiceDetails("regular-ski", "fp", "regular-ship")
+	regularService, _ := api.NewServiceDetails("regular-ski", "fp", "regular-ship")
 	regularService.SetPairingType(api.PairingTypeDefault)
 	regularService.SetTrusted(true)
 	s.sut.addService(regularService)
@@ -456,7 +456,7 @@ func (s *HubSuite) Test_startAddCuReplacementTimersForOfflineDevices_OfflineAddC
 	// Test startup with offline AddCu device - should start replacement timer
 	
 	// Create trusted AddCu service that's not connected
-	addCuService := api.NewServiceDetails("addcu-ski", "addcu-fp", "addcu-ship-123")
+	addCuService, _ := api.NewServiceDetails("addcu-ski", "addcu-fp", "addcu-ship-123")
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	addCuService.SetTrusted(true)
 	s.sut.addService(addCuService)
@@ -478,7 +478,7 @@ func (s *HubSuite) Test_startAddCuReplacementTimersForOfflineDevices_ConnectedAd
 	// Test startup with connected AddCu device - should NOT start timer
 	
 	// Create trusted AddCu service
-	addCuService := api.NewServiceDetails("connected-addcu-ski", "addcu-fp", "connected-ship")
+	addCuService, _ := api.NewServiceDetails("connected-addcu-ski", "addcu-fp", "connected-ship")
 	addCuService.SetPairingType(api.PairingTypeAddCu)
 	addCuService.SetTrusted(true)
 	s.sut.addService(addCuService)
@@ -503,7 +503,7 @@ func (s *HubSuite) Test_startAddCuReplacementTimersForOfflineDevices_UntrustedAd
 	// Test startup with untrusted AddCu device - should NOT start timer
 	
 	// Create untrusted AddCu service
-	untrustedService := api.NewServiceDetails("untrusted-ski", "fp", "untrusted-ship")
+	untrustedService, _ := api.NewServiceDetails("untrusted-ski", "fp", "untrusted-ship")
 	untrustedService.SetPairingType(api.PairingTypeAddCu)
 	untrustedService.SetTrusted(false) // Not trusted
 	s.sut.addService(untrustedService)
@@ -518,7 +518,7 @@ func (s *HubSuite) Test_startAddCuReplacementTimersForOfflineDevices_AddCuWithou
 	// Test startup with AddCu device without ShipID - should NOT start timer
 	
 	// Create AddCu service without ShipID
-	noShipIDService := api.NewServiceDetails("noshipid-ski", "fp", "")
+	noShipIDService, _ := api.NewServiceDetails("noshipid-ski", "fp", "")
 	noShipIDService.SetPairingType(api.PairingTypeAddCu)
 	noShipIDService.SetTrusted(true)
 	s.sut.addService(noShipIDService)
@@ -541,7 +541,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_NonAddCuService() {
 	// Hub is already created in BeforeTest
 
 	// Add a service that is not AddCu type
-	service := api.NewServiceDetails("testski", "", "shipid123")
+	service, _ := api.NewServiceDetails("testski", "", "shipid123")
 	service.SetPairingType(api.PairingTypeDefault) // Not AddCu
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -557,7 +557,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_ValidAddCuService() {
 	// Hub is already created in BeforeTest
 
 	// Add an AddCu service that is trusted
-	service := api.NewServiceDetails("testski", "", "shipid123")
+	service, _ := api.NewServiceDetails("testski", "", "shipid123")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -627,13 +627,13 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsPolling_SuccessWithEnt
 	hubReader.EXPECT().AllowWaitingForTrust(gomock.Any()).Return(false).AnyTimes()
 	
 	certificate, _ := cert.CreateCertificate("test", "test-org", "DE", "test-cn")
-	localService := api.NewServiceDetails("localski", "", "")
+	localService, _ := api.NewServiceDetails("localski", "", "")
 	
 	hub, err := NewHub(hubReader, combinedMock, 12345, certificate, localService, nil, nil)
 	require.NoError(s.T(), err)
 	
 	// Add AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	hub.remoteServices = append(hub.remoteServices, service)
@@ -672,7 +672,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsPolling_RequestError()
 	mockPairing.On("RequestPairingEntries").Return(map[string]*api.ShipPairingTXT(nil), errors.New("mDNS request failed"))
 	
 	certificate, _ := cert.CreateCertificate("test", "test-org", "DE", "test-cn")
-	localService := api.NewServiceDetails("localski", "", "")
+	localService, _ := api.NewServiceDetails("localski", "", "")
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	hubReader.EXPECT().RemoteServiceConnected(gomock.Any()).Return().AnyTimes()
 	hubReader.EXPECT().RemoteServiceDisconnected(gomock.Any()).Return().AnyTimes()
@@ -684,7 +684,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsPolling_RequestError()
 	require.NoError(s.T(), err)
 	
 	// Add AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	hub.remoteServices = append(hub.remoteServices, service)
@@ -723,7 +723,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsPolling_NoEntries() {
 	mockPairing.On("RequestPairingEntries").Return(emptyEntries, nil)
 	
 	certificate, _ := cert.CreateCertificate("test", "test-org", "DE", "test-cn")
-	localService := api.NewServiceDetails("localski", "", "")
+	localService, _ := api.NewServiceDetails("localski", "", "")
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	hubReader.EXPECT().RemoteServiceConnected(gomock.Any()).Return().AnyTimes()
 	hubReader.EXPECT().RemoteServiceDisconnected(gomock.Any()).Return().AnyTimes()
@@ -735,7 +735,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsPolling_NoEntries() {
 	require.NoError(s.T(), err)
 	
 	// Add AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	hub.remoteServices = append(hub.remoteServices, service)
@@ -751,7 +751,7 @@ func (s *HubSuite) Test_handleAddCuReplacementTimeout_MdnsDoesNotImplementPairin
 	// This should use the existing s.sut setup which only has MockMdnsInterface
 	
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -813,7 +813,7 @@ func (s *MdnsPairingPollingTestSuite) SetupTest() {
 	s.combinedMdnsService.MockMdnsInterface.EXPECT().Shutdown().Return().AnyTimes()
 
 	// Create hub with combined mDNS service
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 
 	var err error
@@ -834,7 +834,7 @@ func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_MdnsPol
 	// Test mDNS polling succeeds and finds active pairing announcements
 
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -887,7 +887,7 @@ func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_MdnsPol
 	// Test mDNS polling succeeds but finds no active pairing announcements
 
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -913,7 +913,7 @@ func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_MdnsPol
 	// Test mDNS polling fails with error
 
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -937,7 +937,7 @@ func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_MdnsPol
 	// Test that interface assertion succeeds and code path is executed
 
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -978,7 +978,7 @@ func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_MdnsPol
 func (s *MdnsPairingPollingTestSuite) Test_handleAddCuReplacementTimeout_ProcessPendingEntriesError() {
 	// Test error handling when ProcessPendingEntries fails
 	// Add an AddCu service
-	service := api.NewServiceDetails("testski", "", "expired-shipid")
+	service, _ := api.NewServiceDetails("testski", "", "expired-shipid")
 	service.SetPairingType(api.PairingTypeAddCu)
 	service.SetTrusted(true)
 	s.sut.remoteServices = append(s.sut.remoteServices, service)
@@ -1085,7 +1085,7 @@ func (s *HubSuite) Test_reactivatePairingListener_ListenerMode() {
 func (s *HubSuite) Test_callDeviceAutoTrustRemovedCallback_NoInterface() {
 	// Hub is already created in BeforeTest
 
-	service := api.NewServiceDetails("testski", "", "shipid123")
+	service, _ := api.NewServiceDetails("testski", "", "shipid123")
 
 	// hubReader does not implement PairingServiceReaderInterface by default
 	// Should complete without error
@@ -1119,7 +1119,7 @@ func (s *HubSuite) Test_callDeviceAutoTrustRemovedCallback_WithInterface() {
 	}
 
 	// Create hub with combined reader
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 
 	// Add mDNS expectation for the new hub
@@ -1129,7 +1129,7 @@ func (s *HubSuite) Test_callDeviceAutoTrustRemovedCallback_WithInterface() {
 	assert.NoError(s.T(), err)
 	defer hubWithCallback.Shutdown()
 
-	service := api.NewServiceDetails("callbacktestski", "", "test-ship-id")
+	service, _ := api.NewServiceDetails("callbacktestski", "", "test-ship-id")
 
 	// This should now execute the callback path (the missing 60% coverage)
 	hubWithCallback.callDeviceAutoTrustRemovedCallback(service, "test callback reason")
@@ -1157,7 +1157,7 @@ func (s *HubSuite) Test_RemoveService_EdgeCases() {
 
 func (s *HubSuite) Test_RemoveService_BySKI() {
 	// Add a service first
-	service := api.NewServiceDetails("testremoveski", "", "")
+	service, _ := api.NewServiceDetails("testremoveski", "", "")
 	s.sut.addService(service)
 
 	// Verify it was added
@@ -1174,7 +1174,7 @@ func (s *HubSuite) Test_RemoveService_BySKI() {
 
 func (s *HubSuite) Test_RemoveService_ByFingerprint() {
 	// Add a service with fingerprint
-	service := api.NewServiceDetails("testski", "test-fingerprint", "")
+	service, _ := api.NewServiceDetails("testski", "test-fingerprint", "")
 	s.sut.addService(service)
 
 	// Remove by fingerprint only
@@ -1187,8 +1187,8 @@ func (s *HubSuite) Test_RemoveService_ByFingerprint() {
 
 func (s *HubSuite) Test_RemoveService_MultipleCriteria() {
 	// Add multiple services
-	service1 := api.NewServiceDetails("ski1", "fp1", "")
-	service2 := api.NewServiceDetails("ski2", "fp2", "")
+	service1, _ := api.NewServiceDetails("ski1", "fp1", "")
+	service2, _ := api.NewServiceDetails("ski2", "fp2", "")
 	s.sut.addService(service1)
 	s.sut.addService(service2)
 
@@ -1205,7 +1205,7 @@ func (s *HubSuite) Test_RemoveService_MultipleCriteria() {
 
 func (s *HubSuite) Test_RemoveService_BothCriteriaMustMatch() {
 	// Test that RemoveService requires both SKI and fingerprint to match when both are provided
-	service := api.NewServiceDetails("testski", "test-fp", "")
+	service, _ := api.NewServiceDetails("testski", "test-fp", "")
 	s.sut.addService(service)
 
 	// Try to remove with matching SKI but wrong fingerprint - should NOT remove
@@ -1218,7 +1218,7 @@ func (s *HubSuite) Test_RemoveService_BothCriteriaMustMatch() {
 
 func (s *HubSuite) Test_ServiceForIdentifier_EdgeCases() {
 	// Test various lookup scenarios
-	service := api.NewServiceDetails("testski", "test-fp", "")
+	service, _ := api.NewServiceDetails("testski", "test-fp", "")
 	s.sut.addService(service)
 
 	// Standard lookup by SKI
@@ -1288,7 +1288,7 @@ func (suite *DualInterfaceCallbackTestSuite) SetupTest() {
 	}
 
 	// Create hub with combined reader
-	localService := api.NewServiceDetails("localSKI", "", "")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
 
 	var err error
@@ -1311,7 +1311,7 @@ type EmbeddedDualReader struct {
 
 func (suite *DualInterfaceCallbackTestSuite) TestCallDeviceAutoTrustRemovedCallback_WithBothInterfaces() {
 	// Now we can test the actual callback path!
-	service := api.NewServiceDetails("callbacktestski", "", "test-ship-id")
+	service, _ := api.NewServiceDetails("callbacktestski", "", "test-ship-id")
 
 	// This should successfully execute the callback path since our mock implements both interfaces
 	suite.hub.callDeviceAutoTrustRemovedCallback(service, "test callback reason")
@@ -1379,7 +1379,7 @@ func (s *HandleShipHandshakeStateUpdateTestSuite) SetupTest() {
 	var err error
 	s.certificate, err = cert.CreateCertificate("test-unit", "test-org", "DE", "test-cn")
 	require.NoError(s.T(), err)
-	s.localService = api.NewServiceDetails("hubtestski", "", "")
+	s.localService, _ = api.NewServiceDetails("hubtestski", "", "")
 
 	// Create Hub
 	s.hub, err = newTestHub(
@@ -1393,7 +1393,7 @@ func (s *HandleShipHandshakeStateUpdateTestSuite) SetupTest() {
 	require.NoError(s.T(), err)
 
 	// Add test service for state updates
-	testService := api.NewServiceDetails(s.testSKI, "", s.testShipID)
+	testService, _ := api.NewServiceDetails(s.testSKI, "", s.testShipID)
 	success := s.hub.addService(testService)
 	require.True(s.T(), success, "Should add test service")
 }
@@ -1928,7 +1928,7 @@ func (s *HandleShipHandshakeStateUpdateTestSuite) TestHandleShipHandshakeStateUp
 	// Setup additional services
 	otherSKIs := []string{"otherski1", "otherski2", "otherski3"}
 	for _, ski := range otherSKIs {
-		service := api.NewServiceDetails(ski, "", fmt.Sprintf("ship-%s", ski))
+		service, _ := api.NewServiceDetails(ski, "", fmt.Sprintf("ship-%s", ski))
 		success := s.hub.addService(service)
 		require.True(s.T(), success, "Should add service for SKI: %s", ski)
 	}

@@ -22,14 +22,16 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		mockHubReader := mocks.NewHubReaderInterface(t)
 		mockMdns := mocks.NewMdnsInterface(t)
 		mockMdns.EXPECT().Shutdown().Maybe()
-		localService := api.NewServiceDetails("localski5000", "", "")
+		localService, err := api.NewServiceDetails("localski5000", "", "")
+		assert.NoError(t, err)
 		cert := tls.Certificate{}
 
 		hub, err := newTestHub(mockHubReader, mockMdns, 4729, cert, localService, nil)
 		assert.NoError(t, err)
 
 		remoteSKI := "remoteski6000" // Higher than local, so remote should win
-		remoteService := api.NewServiceDetails(remoteSKI, "", "")
+		remoteService, err := api.NewServiceDetails(remoteSKI, "", "")
+		assert.NoError(t, err)
 
 		// Create mock connections
 		oldConn := mocks.NewShipConnectionInterface(t)
@@ -107,14 +109,16 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		mockHubReader := mocks.NewHubReaderInterface(t)
 		mockMdns := mocks.NewMdnsInterface(t)
 		mockMdns.EXPECT().Shutdown().Maybe()
-		localService := api.NewServiceDetails("localski4000", "", "")
+		localService, err := api.NewServiceDetails("localski4000", "", "")
+		assert.NoError(t, err)
 		cert := tls.Certificate{}
 
 		hub, err := newTestHub(mockHubReader, mockMdns, 4729, cert, localService, nil)
 		assert.NoError(t, err)
 
 		remoteSKI := "remoteski5000" // Higher than local
-		remoteService := api.NewServiceDetails(remoteSKI, "", "")
+		remoteService, err := api.NewServiceDetails(remoteSKI, "", "")
+		assert.NoError(t, err)
 
 		// Create multiple mock connections
 		mockConns := make([]*mocks.ShipConnectionInterface, 10)
@@ -154,7 +158,9 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		wg.Wait()
 
 		// Final state should be consistent (no connection or one connection)
-		finalConn := hub.connectionForService(api.NewServiceDetails(remoteSKI, "", ""))
+		svc, err := api.NewServiceDetails(remoteSKI, "", "")
+		assert.NoError(t, err)
+		finalConn := hub.connectionForService(svc)
 		t.Logf("Final connection state: %v", finalConn != nil)
 
 		hub.Shutdown()

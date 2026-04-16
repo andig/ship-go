@@ -642,7 +642,10 @@ func main() {
 	fmt.Printf("📜 Device SKI: %s\n", ski)
 
 	// Create service details
-	serviceDetails := api.NewServiceDetails(ski, "", "")
+	serviceDetails, err := api.NewServiceDetails(ski, "", "")
+	if err != nil {
+		log.Fatal("Failed to create service details:", err)
+	}
 
 	// Create mDNS manager
 	deviceCategories := []api.DeviceCategoryType{} // Configure as needed

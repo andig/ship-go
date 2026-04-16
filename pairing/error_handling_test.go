@@ -53,7 +53,8 @@ func (suite *PairingErrorHandlingTestSuite) SetupTest() {
 	require.NoError(suite.T(), err)
 
 	// Create service details
-	suite.testService = api.NewServiceDetails(suite.testSKI, "", "")
+	suite.testService, err = api.NewServiceDetails(suite.testSKI, "", "")
+	require.NoError(suite.T(), err)
 	suite.testService.SetShipID("i:123_u:test-device")
 
 	// Test secret
