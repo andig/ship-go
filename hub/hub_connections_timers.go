@@ -62,5 +62,6 @@ func (h *Hub) cancelConnectionDelayTimer(ski string) {
 	if timer, ok := h.connectionDelayTimers[ski]; ok {
 		timer.Stop()
 		delete(h.connectionDelayTimers, ski)
+		h.setConnectionAttemptRunning(ski, false)
 	}
 }
