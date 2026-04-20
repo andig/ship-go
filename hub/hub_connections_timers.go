@@ -60,8 +60,10 @@ func (h *Hub) cancelConnectionDelayTimer(ski string) {
 	defer h.muxTimers.Unlock()
 
 	if timer, ok := h.connectionDelayTimers[ski]; ok {
-		timer.Stop()
+		canceled := timer.Stop()
+		if canceled {
+			h.setConnectionAttemptRunning(ski, false)
+		}
 		delete(h.connectionDelayTimers, ski)
-		h.setConnectionAttemptRunning(ski, false)
 	}
 }
