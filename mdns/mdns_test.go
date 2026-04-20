@@ -2,6 +2,7 @@ package mdns
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -136,10 +137,10 @@ func (s *MdnsSuite) Test_GoZeroConfOnly() {
 
 	err := s.sut.Start(api.PairingModeBoth, s.mdnsSearch)
 	assert.Nil(s.T(), err)
-	assert.False(s.T(), s.sut.autoaccept)
+	assert.False(s.T(), s.sut.autoaccept.Load())
 
 	s.sut.SetAutoAccept(true)
-	assert.True(s.T(), s.sut.autoaccept)
+	assert.True(s.T(), s.sut.autoaccept.Load())
 }
 
 func (s *MdnsSuite) Test_Start() {
@@ -184,7 +185,7 @@ func (s *MdnsSuite) Test_Start_IFaces_Invalid() {
 	assert.False(s.T(), s.sut.isAnnounced)
 
 	s.sut.SetAutoAccept(true)
-	assert.Equal(s.T(), true, s.sut.autoaccept)
+	assert.Equal(s.T(), true, s.sut.autoaccept.Load())
 
 	s.sut.Shutdown()
 }
@@ -1895,7 +1896,7 @@ func (s *MdnsSuite) Test_SetAutoAccept_ServiceNotAnnounced() {
 	s.sut.SetAutoAccept(true)
 
 	// Verify autoaccept was set
-	assert.True(s.T(), s.sut.autoaccept)
+	assert.True(s.T(), s.sut.autoaccept.Load())
 
 	// The test passes if no unexpected calls were made to the provider
 	// (i.e., AnnounceService was not called because service is not announced)
@@ -2056,4 +2057,49 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_NoInterfaces_WithPairing() 
 	// and will be re-announced when interfaces reappear.
 	assert.True(s.T(), s.sut.IsPairingServiceAnnounced(),
 		"IsPairingServiceAnnounced should remain true: logical entries are preserved for later re-announcement")
+}
+
+func (s *MdnsSuite) Test_AutoAcceptServiceAlreadyAnnounced() {
+	mdnsProvider := mocks.NewMdnsProviderInterface(s.T())
+	s.sut.mdnsProvider = mdnsProvider
+
+	// something has already been announced
+	s.sut.isAnnounced = true
+	s.sut.instanceID = "old-id-1"
+
+	// Create-then-swap: new AnnounceService is called first, then the old
+	// instance is unannounced. No goodbye-gap visible to remote devices.
+	mdnsProvider.EXPECT().AnnounceService(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("new-id-1", nil).Once()
+	mdnsProvider.EXPECT().UnannounceService("old-id-1").Return(nil).Once()
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept.Load())
+
+	mdnsProvider.EXPECT().AnnounceService(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("new-id-2", nil).Once()
+	mdnsProvider.EXPECT().UnannounceService("new-id-1").Return(nil).Once()
+	s.sut.SetAutoAccept(false)
+	assert.False(s.T(), s.sut.autoaccept.Load())
+
+	assert.True(s.T(), s.sut.isAnnounced)
+
+	// AfterTest → Shutdown → UnannounceMdnsEntry tears down the current instance
+	mdnsProvider.EXPECT().UnannounceService("new-id-2").Return(nil).Once()
+	mdnsProvider.EXPECT().Shutdown()
+}
+
+func (s *MdnsSuite) Test_AutoAcceptMdnsProviderReannounceFails() {
+	mdnsProvider := mocks.NewMdnsProviderInterface(s.T())
+	s.sut.mdnsProvider = mdnsProvider
+
+	// something has already been announced
+	s.sut.isAnnounced = true
+	s.sut.instanceID = "old-id"
+
+	// New announcement fails: isAnnounced must reflect that we no longer
+	// have a known-good announcement so callers can retry.
+	mdnsProvider.EXPECT().AnnounceService(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", fmt.Errorf("myError")).Once()
+	s.sut.SetAutoAccept(true)
+	assert.True(s.T(), s.sut.autoaccept.Load())
+	assert.False(s.T(), s.sut.isAnnounced)
+
+	mdnsProvider.EXPECT().Shutdown()
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/enbility/go-avahi"
@@ -87,8 +88,8 @@ type MdnsManager struct {
 	// The port address of the websocket server
 	port int
 
-	// Wether remote devices should be automatically accepted
-	autoaccept bool
+	// Whether remote devices should be automatically accepted
+	autoaccept atomic.Bool
 
 	// which pairing mode
 	pairingMode api.PairingMode
@@ -706,7 +707,7 @@ func (m *MdnsManager) AnnounceMdnsEntry() error {
 		"brand=" + m.deviceBrand,
 		"model=" + m.deviceModel,
 		"type=" + m.deviceType,
-		"register=" + fmt.Sprintf("%v", m.autoaccept),
+		"register=" + fmt.Sprintf("%v", m.autoaccept.Load()),
 	}
 
 	// SHIP Requirements for Installation Process V1.0.0
@@ -769,25 +770,26 @@ func (m *MdnsManager) setIsServiceAnnounce(value bool) {
 }
 
 func (m *MdnsManager) SetAutoAccept(accept bool) {
-	m.autoaccept = accept
+	m.autoaccept.Store(accept)
 
-	// if announcement is off, don't enforce a new announcement
-	if !m.isServiceAnnounced() {
+	if !m.isServiceAnnounced() || m.mdnsProvider == nil {
 		return
 	}
 
-	m.UnannounceMdnsEntry()
+	// Create-then-swap: announce a new instance with the updated TXT record
+	// before tearing down the old one. Mirrors reannounceWithNewInterfaces and
+	// avoids goodbye packets that disrupt remote devices (see dev PR #76).
+	oldInstanceID := m.instanceID
+	m.setIsServiceAnnounce(false) // bypass AnnounceMdnsEntry's already-announced early-return
 
-	// Update the announcement as autoaccept changed
-	err := m.AnnounceMdnsEntry()
-
-	if err == nil {
+	if err := m.AnnounceMdnsEntry(); err != nil {
+		logging.Log().Debug("mdns: changing mdns entry failed", err)
 		return
 	}
 
-	logging.Log().Debug("mdns: changing mdns entry failed", err)
-
-	m.setIsServiceAnnounce(false)
+	if oldInstanceID != "" && oldInstanceID != m.instanceID {
+		_ = m.mdnsProvider.UnannounceService(oldInstanceID)
+	}
 }
 
 // SetMdnsProvider sets the mDNS provider for the manager

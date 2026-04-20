@@ -3,6 +3,7 @@ package mdns
 import (
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -553,6 +554,71 @@ func (s *IssuesSuite) Test_AvahiShutdownDoesNotDeadlockOnBusyChanListener() {
 			shutdownDeadline,
 		)
 	}
+}
+
+// ---------------------------------------------------------------------
+// MdnsManager.SetAutoAccept() must not tear down the announcement before
+// the new one is live. The old (pre-PR-#76) implementation called
+// Unannounce() → Announce(), which sent mDNS goodbye packets causing
+// remote devices to think the service left the network. It also performed
+// blocking I/O (DBus / zeroconf Shutdown) that compounded with the
+// muxReg lock-hold issue in Hub.SetAutoAccept.
+//
+// In the current (per-service-ID) provider API, the correct pattern is
+// create-then-swap: AnnounceService for the new instance first, then
+// UnannounceService on the old ID. No goodbye gap is visible to peers.
+//
+// Reproducer: set up an announced MdnsManager, call SetAutoAccept, and
+// verify that the new AnnounceService is observed before any old-ID
+// UnannounceService.
+// ---------------------------------------------------------------------
+
+func (s *IssuesSuite) Test_SetAutoAcceptUsesCreateThenSwap() {
+	var (
+		mu             sync.Mutex
+		newAnnounceAt  int
+		oldUnannounceAt int
+		callSeq        int
+	)
+
+	provider := mocks.NewMdnsProviderInterface(s.T())
+	provider.EXPECT().
+		AnnounceService(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_, _ string, _ int, _ []string) (string, error) {
+			mu.Lock()
+			callSeq++
+			newAnnounceAt = callSeq
+			mu.Unlock()
+			return "new-id", nil
+		}).Once()
+
+	provider.EXPECT().
+		UnannounceService("old-id").
+		RunAndReturn(func(_ string) error {
+			mu.Lock()
+			callSeq++
+			oldUnannounceAt = callSeq
+			mu.Unlock()
+			return nil
+		}).Once()
+
+	mgr := NewMDNS("test", "brand", "model", "EnergyManagementSystem",
+		"12345",
+		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
+		"shipid", "serviceName",
+		4729, nil, MdnsProviderSelectionAll)
+	mgr.mdnsProvider = provider
+	mgr.instanceID = "old-id"
+	mgr.setIsServiceAnnounce(true)
+
+	mgr.SetAutoAccept(true)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.NotZero(s.T(), newAnnounceAt, "new AnnounceService must be called")
+	assert.NotZero(s.T(), oldUnannounceAt, "old UnannounceService must be called to reclaim the instance")
+	assert.Less(s.T(), newAnnounceAt, oldUnannounceAt,
+		"new AnnounceService must run before UnannounceService(old) — create-then-swap avoids goodbye gap")
 }
 
 // Helper: verify avahi.InterfaceUnspec is what we expect
