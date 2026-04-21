@@ -61,6 +61,7 @@ func (h *Hub) cancelConnectionDelayTimer(ski string) {
 
 	if timer, ok := h.connectionDelayTimers[ski]; ok {
 		canceled := timer.Stop()
+		// If Stop returned true the callback won’t run so we reset the flag here; if Stop returned false the in-flight callback’s defer will reset it
 		if canceled {
 			h.setConnectionAttemptRunning(ski, false)
 		}
