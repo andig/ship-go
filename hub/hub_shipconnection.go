@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/enbility/ship-go/api"
-	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/model"
 )
 
@@ -52,11 +51,11 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 		h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
 	}
 
-	// Start replacement tracker for AddCu devices
-	if remoteService.PairingType() == api.PairingTypeAddCu && remoteService.ShipID() != "" {
-		shipID := remoteService.ShipID()
-		logging.Log().Trace("starting AddCu replacement timer", "shipID", shipID, "ski", remoteService.SKI(), "timeout", "15 minutes")
-		h.addCuReplacementTracker.StartTimer(shipID, h.handleAddCuReplacementTimeout)
+	// Cancel any announcement lifetime timer for this device for devZ
+	if h.pairingService != nil && h.pairingConfig != nil && (h.pairingConfig.Mode == api.PairingModeAnnouncer || h.pairingConfig.Mode == api.PairingModeBoth) {
+		if remoteService.ShipID() != "" {
+			h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
+		}
 	}
 
 	h.checkAutoReannounce()

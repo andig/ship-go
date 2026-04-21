@@ -639,6 +639,8 @@ func (h *Hub) handleAddCuReplacementTimeout(expiredShipID string) {
 		return
 	}
 
+	h.reactivatePairingListener("AddCu device replacement timeout")
+
 	// Check for current pairing announcements
 	if mdnsPairing, ok := h.mdns.(api.MdnsPairingInterface); ok {
 		currentPairingServices, err := mdnsPairing.RequestPairingEntries()
@@ -657,8 +659,6 @@ func (h *Hub) handleAddCuReplacementTimeout(expiredShipID string) {
 			}
 		}
 	}
-
-	h.reactivatePairingListener("AddCu device replacement timeout")
 }
 
 // reactivatePairingListener reactivates the pairing listener when AddCu replacement timeout occurs
