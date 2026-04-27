@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/enbility/ship-go/api"
+	"github.com/enbility/ship-go/cert"
 	"github.com/enbility/ship-go/logging"
 )
 
@@ -21,15 +22,45 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 	for _, entry := range entries {
 		mdnsEntries = append(mdnsEntries, entry)
 
+		if !cert.IsSkiFormatValid(entry.Ski) {
+			continue
+		}
+
 		// check if this ski is already connected
 		if h.isSkiConnected(entry.Ski) {
 			continue
 		}
 
 		// Check if the remote service is paired or queued for connection
-		service := h.ServiceForSKI(entry.Ski)
-		if !h.IsRemoteServiceForSKIPaired(entry.Ski) {
-			continue
+		service := h.ServiceForIdentifier(entry.Ski, "")
+		if service != nil {
+			if !h.IsRemoteServiceForSKIPaired(entry.Ski) && service.Trusted() {
+				continue
+			}
+		} else {
+			// devA via SHIP Pairing does not know the SKI at this point,
+			// but has the fingerprint and SHIP ID. The fingerprint is not announced via mDNS!
+
+			// Make sure SHIP ID is not empty
+			if len(entry.Identifier) == 0 {
+				continue
+			}
+
+			service = h.serviceForTrustedShipID(entry.Identifier)
+			if service == nil {
+				continue
+			}
+			// Make sure SKI is not present, to match our criteiron
+			if len(service.SKI()) != 0 {
+				continue
+			}
+			// Fingerprint format validation
+			if !cert.IsFingerprintFormatValid(service.Fingerprint()) {
+				continue
+			}
+			// Fingerprint is valid, add the found SKI in our trust,
+			// given that the fingerprint will be validated on handshake process
+			service.SetSKI(entry.Ski)
 		}
 
 		service.SetAutoAccept(entry.Register)
@@ -41,7 +72,8 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 			}
 		}
 
-		h.coordinateConnectionInitations(entry.Ski, entry)
+		copyEntry := *entry
+		h.coordinateConnectionInitations(copyEntry.Ski, &copyEntry)
 	}
 
 	sort.Slice(mdnsEntries, func(i, j int) bool {
@@ -58,13 +90,13 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 		h.muxMdns.Unlock()
 	}
 
-	var remoteServices []api.RemoteService
+	var remoteServices []api.RemoteMdnsService
 
 	for _, entry := range entries {
-		remoteService := api.RemoteService{
+		remoteService := api.RemoteMdnsService{
 			Name:       entry.Name,
 			Ski:        entry.Ski,
-			Identifier: entry.Identifier,
+			ShipID:     entry.Identifier,
 			Brand:      entry.Brand,
 			Type:       entry.Type,
 			Model:      entry.Model,
@@ -75,7 +107,7 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 		remoteServices = append(remoteServices, remoteService)
 	}
 
-	h.hubReader.VisibleRemoteServicesUpdated(remoteServices)
+	h.hubReader.VisibleRemoteMdnsServicesUpdated(remoteServices)
 }
 
 // cleanupRemovedMdnsEntries cancels connection attempts for SKIs no longer visible in mDNS

@@ -30,6 +30,7 @@ const (
 	MdnsProviderSelectionAll            MdnsProviderSelection = iota // Automatically use avahi if available, otherwise use Go native Zeroconf, default
 	MdnsProviderSelectionAvahiOnly                                   // Only use avahi
 	MdnsProviderSelectionGoZeroConfOnly                              // Only us Go native zeroconf
+	MdnsProviderSelectionTestSetup                                   // Skip provider creation, use pre-set provider via SetMdnsProvider
 )
 
 // ProviderFactory defines functions for creating mDNS providers
@@ -44,6 +45,15 @@ func DefaultProviderFactory() *ProviderFactory {
 		NewAvahi:    func(ifaceIndexes []int32) api.MdnsProviderInterface { return NewAvahiProvider(ifaceIndexes) },
 		NewZeroconf: func(ifaces []net.Interface) api.MdnsProviderInterface { return NewZeroconfProvider(ifaces) },
 	}
+}
+
+// announcedPairing holds the full state for one announced _shippairing._tcp service.
+// The logicalID (the map key in announcedPairings) is stable and returned to callers.
+// providerID is transient and updated transparently when interfaces change.
+type announcedPairing struct {
+	serviceName string               // mDNS service name — stable across re-announcements
+	txtRecord   *api.ShipPairingTXT  // TXT record data
+	providerID  string               // current provider-side instance ID (changes on re-announcement)
 }
 
 type MdnsManager struct {
@@ -81,33 +91,56 @@ type MdnsManager struct {
 	// Whether remote devices should be automatically accepted
 	autoaccept atomic.Bool
 
-	isAnnounced bool
+	// which pairing mode
+	pairingMode api.PairingMode
 
-	// the currently available mDNS entries with the SKI as the key in the map
+	isAnnounced bool // State for _ship._tcp service
+
+	// announcedPairings tracks all pairing services this device has announced.
+	// The map key is a stable logical ID returned to — and held by — callers.
+	// Callers use this logical ID to stop an announcement via UnannouncePairingService.
+	//
+	// The logical ID never changes across interface-change re-announcements.
+	// Only the internal providerID field changes when a new provider instance is
+	// created during re-announcement. This keeps caller-held IDs valid indefinitely.
+	announcedPairings    map[string]*announcedPairing
+	announcedPairingsMux sync.RWMutex
+	instanceCounter       int // monotonic counter for stable logical ID and service name generation
+
+	// the currently available mDNS entries with the serviceName as the key in the map
 	entries map[string]*api.MdnsEntry
+	// the currently available mDNS entries with the serviceName as the key in the map
+	pairingEntries map[string]*api.ShipPairingTXT
 
 	// the registered callback, only connectionsHub is using this
 	report api.MdnsReportInterface
 
-	mdnsProvider api.MdnsProviderInterface
+	// callback for pairing service discoveries
+	pairingCallback func(*api.ShipPairingTXT) bool
 
-	// testProvider is used to inject mock providers for testing
-	testProvider api.MdnsProviderInterface
+	mdnsProvider api.MdnsProviderInterface
 
 	// providerFactory creates provider instances, can be overridden for testing
 	providerFactory *ProviderFactory
 
 	providerSelection MdnsProviderSelection
 
+	// Track if the manager has been started to prevent redundant operations
+	isStarted bool
+
+	// Unique instance ID retrieved from the ship service announcement
+	instanceID string
+
 	// Interface refresh state for continuous monitoring
 	currentIfaces   []string            // Currently resolved interface names
 	missingIfaces   map[string]struct{} // Interfaces not resolved
 	refreshTicker   *time.Ticker        // Periodic retry timer
-	refreshStopChan chan struct{}        // Signal to stop refresh goroutine
-	refreshDone     chan struct{}        // Closed when refreshLoop exits
+	refreshStopChan chan struct{}       // Signal to stop refresh goroutine
+	refreshDone     chan struct{}       // Closed when refreshLoop exits
 	refreshMux      sync.Mutex          // Protects refresh operations
 
 	mux,
+	muxReport,
 	muxAnnounced,
 	shutdownMux sync.Mutex
 }
@@ -153,6 +186,9 @@ func NewMDNS(
 		ifaces:            ifaces,
 		providerSelection: providerSelection,
 		entries:           make(map[string]*api.MdnsEntry),
+		pairingEntries:    make(map[string]*api.ShipPairingTXT),
+		announcedPairings: make(map[string]*announcedPairing),
+		instanceCounter:    0,
 		providerFactory:   DefaultProviderFactory(),
 	}
 
@@ -259,21 +295,54 @@ func getUsableInterface(ifaceName string) (*net.Interface, bool) {
 }
 
 var _ api.MdnsInterface = (*MdnsManager)(nil)
+var _ api.MdnsPairingInterface = (*MdnsManager)(nil)
 
-func (m *MdnsManager) Start(cb api.MdnsReportInterface) error {
+func (m *MdnsManager) reportInterface() api.MdnsReportInterface {
+	m.muxReport.Lock()
+	defer m.muxReport.Unlock()
+	return m.report
+}
+
+func (m *MdnsManager) setReportInterface(report api.MdnsReportInterface) {
+	m.muxReport.Lock()
+	defer m.muxReport.Unlock()
+	m.report = report
+}
+
+func (m *MdnsManager) Start(pairingMode api.PairingMode, cb api.MdnsReportInterface) error {
+	// Always update the callback, even on subsequent calls
+	m.setReportInterface(cb)
+
+	m.pairingMode = pairingMode
+
+	// Check if already started to avoid duplicate initialization
+	if m.isStarted {
+		// on subsequent calls, just make sure mDNS announcement is active
+		if err := m.AnnounceMdnsEntry(); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	ifaces, ifaceIndexes, err := m.interfaces()
 	if err != nil && !errors.Is(err, ErrNoInterfacesAvailable) {
 		return err
 	}
 
-	// assign the cb before mDNS is initialised, so that we don't miss any found services
-	m.report = cb
-
 	// If a test provider is injected, use it instead of creating a real provider
-	if m.testProvider != nil {
-		m.mdnsProvider = m.testProvider
-	} else {
-		// Validate provider factory is available
+	// Handle provider selection
+	switch m.providerSelection {
+	case MdnsProviderSelectionTestSetup:
+		// For test setup, provider should already be set - validate and continue
+		if m.mdnsProvider == nil {
+			return fmt.Errorf("test provider must be set before starting with MdnsProviderSelectionTestSetup")
+		}
+		// Start the test provider only once
+		if !m.mdnsProvider.Start(pairingMode, true, m.processMdnsEntry) {
+			return fmt.Errorf("test provider failed to start")
+		}
+	default:
+		// Validate provider factory is available for non-test selections
 		if m.providerFactory == nil {
 			return fmt.Errorf("mDNS provider factory not initialized for provider selection %d", m.providerSelection)
 		}
@@ -299,6 +368,12 @@ func (m *MdnsManager) Start(cb api.MdnsReportInterface) error {
 	if m.mdnsProvider == nil {
 		return fmt.Errorf("failed to initialize any mDNS provider (selection: %d)", m.providerSelection)
 	}
+
+	// Signal handler removed - libraries should not register signal handlers
+	// The application using this library is responsible for calling Shutdown()
+	// when appropriate (e.g., on SIGINT/SIGTERM)
+
+	m.isStarted = true
 
 	// Only announce if we have interfaces available
 	if ifaces != nil || ifaceIndexes != nil {
@@ -416,10 +491,16 @@ func (m *MdnsManager) attemptResolveMapping() {
 // could break existing EEBUS/SHIP connections on interfaces that are still operational.
 func (m *MdnsManager) reannounceWithNewInterfaces() {
 	wasAnnounced := m.isServiceAnnounced()
+	pairingWasAnnounced := m.IsPairingServiceAnnounced()
 
 	if !wasAnnounced {
 		logging.Log().Info("mdns: making first announcement now that interfaces are available")
 	}
+	if !pairingWasAnnounced {
+		logging.Log().Info("mdns: making first pairing announcement now that interfaces are available")
+	}
+
+	m.setIsServiceAnnounce(false)
 
 	// Re-resolve interfaces (will pick up newly available ones)
 	ifaces, ifaceIndexes, err := m.resolveInterfaces()
@@ -428,6 +509,16 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 			logging.Log().Debug("mdns: still no interfaces available during refresh")
 			if wasAnnounced {
 				m.UnannounceMdnsEntry()
+			}
+			if pairingWasAnnounced {
+				// Tear down provider-side instances only. announcedPairings (the logical entries)
+				// are preserved so services are re-announced when interfaces reappear.
+				m.announcedPairingsMux.Lock()
+				for _, entry := range m.announcedPairings {
+					_ = m.mdnsProvider.UnannounceService(entry.providerID)
+					entry.providerID = "" // mark as not currently active
+				}
+				m.announcedPairingsMux.Unlock()
 			}
 			return
 		}
@@ -446,10 +537,37 @@ func (m *MdnsManager) reannounceWithNewInterfaces() {
 		return
 	}
 
+	// Re-announce all pairing services with the updated interface list.
+	// announcedPairings is the authoritative source: logical IDs are stable, service names
+	// are reused (remote devices see the same service), only the internal provider ID changes.
+	//
+	// Create-then-swap: new provider instance is live before the old one is torn down.
+	m.announcedPairingsMux.Lock()
+	for _, entry := range m.announcedPairings {
+		txtArray := m.convertPairingTXTToArray(entry.txtRecord)
+		newProviderID, err := m.mdnsProvider.AnnounceService(shipPairingZeroConfServiceType, entry.serviceName, m.port, txtArray)
+		if err != nil {
+			m.announcedPairingsMux.Unlock()
+			logging.Log().Debug("mdns: pairing re-announcement failed:", err)
+			return
+		}
+		oldProviderID := entry.providerID
+		entry.providerID = newProviderID // atomic swap under lock
+		if oldProviderID != "" {
+			_ = m.mdnsProvider.UnannounceService(oldProviderID)
+		}
+	}
+	m.announcedPairingsMux.Unlock()
+
 	if !wasAnnounced {
 		logging.Log().Info("mdns: successfully made first announcement")
 	} else {
 		logging.Log().Info("mdns: successfully re-announced with new interfaces")
+	}
+	if !pairingWasAnnounced {
+		logging.Log().Info("mdns: successfully made first pairing announcement")
+	} else {
+		logging.Log().Info("mdns: successfully re-announced pairing with new interfaces")
 	}
 }
 
@@ -534,6 +652,19 @@ func (m *MdnsManager) Shutdown() {
 	}()
 	m.mdnsProvider = nil
 
+	// Clear the report interface to prevent goroutines from accessing it after shutdown
+	m.setReportInterface(nil)
+
+	// Clear mDNS entries to prevent contamination between runs
+	m.mux.Lock()
+	m.entries = make(map[string]*api.MdnsEntry)
+	m.pairingEntries = make(map[string]*api.ShipPairingTXT)
+	// Clear pairing callback to prevent contamination between runs
+	m.pairingCallback = nil
+	m.mux.Unlock()
+
+	// Reset the start state to allow restarting after shutdown
+	m.isStarted = false
 	// Always reset announced state so a subsequent Start() begins clean,
 	// even if UnannounceMdnsEntry above panicked before clearing it.
 	m.setIsServiceAnnounce(false)
@@ -545,6 +676,11 @@ func (m *MdnsManager) Shutdown() {
 func (m *MdnsManager) AnnounceMdnsEntry() error {
 	if m.mdnsProvider == nil {
 		return fmt.Errorf("cannot announce mDNS entry: no provider available (selection: %d)", m.providerSelection)
+	}
+
+	// no need to announce if it is already, can happen when call via hub
+	if m.isServiceAnnounced() {
+		return nil
 	}
 
 	// Validate required fields
@@ -588,10 +724,12 @@ func (m *MdnsManager) AnnounceMdnsEntry() error {
 
 	serviceName := m.serviceName
 
-	if err := m.mdnsProvider.Announce(serviceName, m.port, txt); err != nil {
+	instanceID, err := m.mdnsProvider.AnnounceService(shipZeroConfServiceType, serviceName, m.port, txt)
+	if err != nil {
 		logging.Log().Debug("mdns: failure announcing service", err)
 		return err
 	}
+	m.instanceID = instanceID
 
 	m.setIsServiceAnnounce(true)
 
@@ -609,7 +747,10 @@ func (m *MdnsManager) UnannounceMdnsEntry() {
 	}
 
 	logging.Log().Debug("mdns: stop announcement")
-	m.mdnsProvider.Unannounce()
+	if err := m.mdnsProvider.UnannounceService(m.instanceID); err != nil {
+		logging.Log().Debug("mdns: stop announcement failed: %v", err.Error())
+		return
+	}
 
 	m.setIsServiceAnnounce(false)
 }
@@ -635,15 +776,31 @@ func (m *MdnsManager) SetAutoAccept(accept bool) {
 		return
 	}
 
+	// Create-then-swap: announce a new instance with the updated TXT record
+	// before tearing down the old one. Mirrors reannounceWithNewInterfaces and
+	// avoids goodbye packets that disrupt remote devices (see dev PR #76).
+	oldInstanceID := m.instanceID
+	m.setIsServiceAnnounce(false) // bypass AnnounceMdnsEntry's already-announced early-return
+
 	if err := m.AnnounceMdnsEntry(); err != nil {
 		logging.Log().Debug("mdns: changing mdns entry failed", err)
-		m.setIsServiceAnnounce(false)
+		return
+	}
+
+	if oldInstanceID != "" && oldInstanceID != m.instanceID {
+		_ = m.mdnsProvider.UnannounceService(oldInstanceID)
 	}
 }
 
-// SetTestProvider injects a mock provider for testing purposes
-func (m *MdnsManager) SetTestProvider(provider api.MdnsProviderInterface) {
-	m.testProvider = provider
+// SetMdnsProvider sets the mDNS provider for the manager
+// mainly used for testing
+func (m *MdnsManager) SetMdnsProvider(provider api.MdnsProviderInterface) {
+	if provider == nil {
+		logging.Log().Debug("mdns: cannot set nil provider")
+		return
+	}
+
+	m.mdnsProvider = provider
 }
 
 // SetProviderFactory injects a custom provider factory for testing purposes
@@ -651,22 +808,29 @@ func (m *MdnsManager) SetProviderFactory(factory *ProviderFactory) {
 	m.providerFactory = factory
 }
 
-// Returns a safe to use key value pair for the QR code text in the proper format
-// according to SHIP Requirements for Installation Process V1.0.0
-func (m *MdnsManager) safeQRCodeKeyValue(key, value string) string {
-	if len(value) > 0 {
-		// make sure the value contains no ; chars
-		value = strings.ReplaceAll(value, ";", "")
-
-		// make sure the keys are all uppercase
-		key = strings.ToUpper(key)
-		return fmt.Sprintf("%s:%s;", key, value)
-	}
-
-	return ""
+// Device metadata getters for QR code generation
+func (m *MdnsManager) DeviceBrand() string {
+	return m.deviceBrand
 }
 
-// Returns the device categories as a string, with categories separated by commas
+func (m *MdnsManager) DeviceModel() string {
+	return m.deviceModel
+}
+
+func (m *MdnsManager) DeviceSerial() string {
+	return m.deviceSerial
+}
+
+func (m *MdnsManager) DeviceType() string {
+	return m.deviceType
+}
+
+func (m *MdnsManager) DeviceCategories() []api.DeviceCategoryType {
+	return m.deviceCategories
+}
+
+// deviceCategoriesString returns the device categories as a string, with categories separated by commas
+// This is used internally for mDNS announcements
 func (m *MdnsManager) deviceCategoriesString(categories []api.DeviceCategoryType) string {
 	var cat string
 	for _, category := range categories {
@@ -678,36 +842,7 @@ func (m *MdnsManager) deviceCategoriesString(categories []api.DeviceCategoryType
 	return cat
 }
 
-// Returns the QR code text for the service
-// as defined in SHIP Requirements for Installation Process V1.0.0
-func (m *MdnsManager) QRCodeText() string {
-	var optionals string
-
-	if len(m.deviceBrand) > 0 {
-		optionals += m.safeQRCodeKeyValue("BRAND", m.deviceBrand)
-	}
-
-	if len(m.deviceType) > 0 {
-		optionals += m.safeQRCodeKeyValue("TYPE", m.deviceType)
-	}
-
-	if len(m.deviceModel) > 0 {
-		optionals += m.safeQRCodeKeyValue("MODEL", m.deviceModel)
-	}
-
-	if len(m.deviceSerial) > 0 {
-		optionals += m.safeQRCodeKeyValue("SERIAL", m.deviceSerial)
-	}
-
-	if m.deviceCategories != nil {
-		optionals += m.safeQRCodeKeyValue("CAT", m.deviceCategoriesString(m.deviceCategories))
-	}
-
-	qrcode := fmt.Sprintf("SHIP;SKI:%s;ID:%s;%sENDSHIP;", m.ski, m.identifier, optionals)
-
-	return qrcode
-}
-
+/* MdnsEntry helper */
 func (m *MdnsManager) mdnsEntries() map[string]*api.MdnsEntry {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -715,6 +850,8 @@ func (m *MdnsManager) mdnsEntries() map[string]*api.MdnsEntry {
 	return m.entries
 }
 
+// copyMdnsEntries returns a copy of all mDNS entries
+// Internal: returns entries keyed by serviceName for integrity
 func (m *MdnsManager) copyMdnsEntries() map[string]*api.MdnsEntry {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -751,8 +888,200 @@ func (m *MdnsManager) removeMdnsEntry(serviceName string) {
 	delete(m.entries, serviceName)
 }
 
-// process an mDNS entry and manage mDNS entries map
-func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, host string, addresses []net.IP, port int, remove bool) {
+/* MdnsPairingEntry helper */
+
+func (m *MdnsManager) pairingMdnsEntry(serviceName string) (*api.ShipPairingTXT, bool) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	entry, ok := m.pairingEntries[serviceName]
+	return entry, ok
+}
+
+func (m *MdnsManager) setPairingMdnsEntry(serviceName string, entry *api.ShipPairingTXT) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	m.pairingEntries[serviceName] = entry
+}
+
+func (m *MdnsManager) removePairingMdnsEntry(serviceName string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	delete(m.pairingEntries, serviceName)
+}
+
+// RegisterPairingCallback registers a callback for pairing service discoveries
+func (m *MdnsManager) RegisterPairingCallback(callback func(*api.ShipPairingTXT) bool) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	m.pairingCallback = callback
+}
+
+// UnregisterPairingCallback removes the registered pairing callback
+func (m *MdnsManager) UnregisterPairingCallback() {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	m.pairingCallback = nil
+}
+
+/* Generic mDNS */
+
+// detectServiceType determines the service type based on the serviceType parameter
+func (m *MdnsManager) detectServiceType(serviceType string) ServiceType {
+	// Check the serviceType parameter with exact matching
+	switch serviceType {
+	case shipPairingZeroConfServiceType: // "_shippairing._tcp"
+		return ServiceTypeShipPairing
+	case shipZeroConfServiceType: // "_ship._tcp"
+		return ServiceTypeShip
+	default:
+		return ServiceTypeUnknown
+	}
+}
+
+// processMdnsEntry is the main entry point from providers - routes to appropriate handler
+func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, host, serviceType string, addresses []net.IP, port int, remove bool) {
+	detectedType := m.detectServiceType(serviceType)
+
+	switch detectedType {
+	case ServiceTypeShip:
+		m.processShipMdnsEntry(elements, serviceName, host, addresses, port, remove)
+	case ServiceTypeShipPairing:
+		m.processShipPairingMdnsEntry(elements, serviceName, remove)
+	default:
+		// Unknown service types are ignored
+		logging.Log().Debug("mdns: ignoring unknown service type", serviceType, serviceName)
+	}
+}
+
+// processShipPairingMdnsEntry processes a _shippairing._tcp mDNS entry
+func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, serviceName string, remove bool) {
+	// check for mandatory text elements
+	mapItems := []string{"txtvers", "parType", "forId", "forPar", "trustId", "trustPar", "trustCurve", "type", "trustNonce", "alg", "digest"}
+	for _, item := range mapItems {
+		if _, ok := elements[item]; !ok {
+			logging.Log().Debug("mdns: pairing - missing mandatory element", item, serviceName)
+			return
+		}
+	}
+
+	txtvers := elements["txtvers"]
+	// Validate txtvers value (must be "1" per SHIP spec)
+	if txtvers != "1" {
+		logging.Log().Debug("mdns: pairing - invalid txtvers value", txtvers, serviceName)
+		return
+	}
+
+	parType := elements["parType"]
+	forId := elements["forId"]
+	forPar := elements["forPar"]
+	trustId := elements["trustId"]
+	trustPar := elements["trustPar"]
+	trustCurve := elements["trustCurve"]
+	elType := elements["type"]
+	trustNonce := elements["trustNonce"]
+	alg := elements["alg"]
+	digest := elements["digest"]
+
+	logString := fmt.Sprintf(" - forId: %s, forPar: %s, trustId: %s, trustPar: %s, trustCurve: %s, type: %s, trustNonce: %s, alg: %s, digest: %s",
+		forId, forPar, trustId, trustPar, trustCurve, elType, trustNonce, alg, digest)
+
+	_, exists := m.pairingMdnsEntry(serviceName)
+
+	if remove && exists {
+		// remove
+		// there will be a remove for each address with avahi, but we'll delete it right away
+		m.removePairingMdnsEntry(serviceName)
+
+		logging.Log().Debug("mdns: remove", logString)
+		return
+	}
+
+	if remove || exists {
+		return
+	}
+
+	// new
+	newEntry := &api.ShipPairingTXT{
+		TxtVers:    txtvers,
+		ParType:    parType,
+		ForId:      forId,
+		ForPar:     forPar,
+		TrustId:    trustId,
+		TrustPar:   trustPar,
+		TrustCurve: trustCurve,
+		Type:       elType,
+		TrustNonce: trustNonce,
+		Alg:        alg,
+		Digest:     digest,
+	}
+
+	if err := validatePairingTXTStrict(newEntry); err != nil {
+		logging.Log().Debug("mdns: pairing - invalid TXT record", err, serviceName)
+		return
+	}
+
+	m.setPairingMdnsEntry(serviceName, newEntry)
+
+	logging.Log().Debug("mdns: new", logString)
+
+	m.mux.Lock()
+	callback := m.pairingCallback
+	m.mux.Unlock()
+
+	if callback == nil {
+		logging.Log().Debug("mdns: pairing entry received but no callback registered")
+		return
+	}
+
+	// Invoke callback with pairing data
+	// Return value: true = continue searching, false = stop searching (pairing accepted)
+	continueSearching := callback(newEntry)
+	if !continueSearching {
+		logging.Log().Debug("mdns: not searching shippairing")
+	}
+}
+
+func validatePairingTXTStrict(txt *api.ShipPairingTXT) error {
+	if err := txt.Validate(); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(txt.ForId) == "" || strings.TrimSpace(txt.TrustId) == "" {
+		return api.ErrInvalidTXTRecord
+	}
+
+	if !isUpperHexOfLength(txt.TrustNonce, 32) {
+		return api.ErrInvalidTXTRecord
+	}
+
+	if !isUpperHexOfLength(txt.Digest, 64) {
+		return api.ErrInvalidTXTRecord
+	}
+
+	return nil
+}
+
+func isUpperHexOfLength(v string, n int) bool {
+	if len(v) != n {
+		return false
+	}
+
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') {
+			continue
+		}
+		return false
+	}
+
+	return true
+}
+
+// processShipMdnsEntry processes a standard _ship._tcp mDNS entry (original processMdnsEntry logic)
+func (m *MdnsManager) processShipMdnsEntry(elements map[string]string, serviceName, host string, addresses []net.IP, port int, remove bool) {
 	// check for mandatory text elements
 	mapItems := []string{"txtvers", "id", "path", "ski", "register"}
 	for _, item := range mapItems {
@@ -838,7 +1167,7 @@ func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, 
 		// there will be a remove for each address with avahi, but we'll delete it right away
 		m.removeMdnsEntry(serviceName)
 
-		logging.Log().Debug("mdns: remove - ski:", ski, "serviceName:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
+		logging.Log().Debug("mdns: remove - ski:", ski, "name:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
 	} else if exists {
 		// Update existing entry with new metadata and merge addresses
 
@@ -894,7 +1223,7 @@ func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, 
 		if updated {
 			m.setMdnsEntry(serviceName, entry)
 
-			logging.Log().Debug("mdns: update - ski:", ski, "serviceName:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
+			logging.Log().Debug("mdns: update - ski:", ski, "name:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
 		}
 	} else if !exists && !remove {
 		updated = true
@@ -916,24 +1245,28 @@ func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, 
 		}
 		m.setMdnsEntry(serviceName, newEntry)
 
-		logging.Log().Debug("mdns: new - ski:", ski, "serviceName:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
+		logging.Log().Debug("mdns: new - ski:", ski, "name:", serviceName, "brand:", brand, "model:", model, "typ:", deviceType, "serial:", serial, "categories:", categoriesStr, "identifier:", identifier, "register:", register, "host:", host, "port:", port, "addresses:", addresses)
 	}
 
-	if m.report == nil || !updated {
+	reportIntf := m.reportInterface()
+	if reportIntf == nil || !updated {
 		return
 	}
 
+	// Report entries keyed by SKI for Hub compatibility
 	entries := m.copyMdnsEntries()
-	go m.report.ReportMdnsEntries(entries, true)
+	go reportIntf.ReportMdnsEntries(entries, true)
 }
 
 func (m *MdnsManager) RequestMdnsEntries() {
-	if m.report == nil {
+	reportIntf := m.reportInterface()
+	if reportIntf == nil {
 		return
 	}
 
+	// Report entries keyed by SKI for Hub compatibility
 	entries := m.copyMdnsEntries()
-	go m.report.ReportMdnsEntries(entries, false)
+	go reportIntf.ReportMdnsEntries(entries, false)
 }
 
 // initializeProviderWithFallback attempts to initialize Avahi first, then falls back to Zeroconf
@@ -966,7 +1299,7 @@ func (m *MdnsManager) initializeAvahiProvider(ifaceIndexes []int32, autoReconnec
 		return fmt.Errorf("failed to create Avahi provider instance (interfaces: %d)", len(ifaceIndexes))
 	}
 
-	if !provider.Start(autoReconnect, m.processMdnsEntry) {
+	if !provider.Start(m.pairingMode, autoReconnect, m.processMdnsEntry) {
 		// Clean up failed provider
 		provider.Shutdown()
 		return fmt.Errorf("avahi provider failed to start (interfaces: %d, autoReconnect: %v)", len(ifaceIndexes), autoReconnect)
@@ -987,7 +1320,7 @@ func (m *MdnsManager) initializeZeroconfProvider(ifaces []net.Interface, autoRec
 		return fmt.Errorf("failed to create Zeroconf provider instance (interfaces: %d)", len(ifaces))
 	}
 
-	if !provider.Start(autoReconnect, m.processMdnsEntry) {
+	if !provider.Start(m.pairingMode, autoReconnect, m.processMdnsEntry) {
 		// Clean up failed provider
 		provider.Shutdown()
 		return fmt.Errorf("zeroconf provider failed to start (interfaces: %d, autoReconnect: %v)", len(ifaces), autoReconnect)
@@ -995,4 +1328,195 @@ func (m *MdnsManager) initializeZeroconfProvider(ifaces []net.Interface, autoRec
 
 	m.mdnsProvider = provider
 	return nil
+}
+
+/* SHIP Pairing Service Extension - TDD Stubs */
+
+// AnnouncePairingService announces _shippairing._tcp service (implements MdnsPairingInterface).
+//
+// Returns a stable logical ID. The caller must hold this ID and pass it to
+// UnannouncePairingService to stop the announcement. The logical ID remains valid
+// across interface-change re-announcements — the manager transparently replaces the
+// underlying provider instance without invalidating caller-held IDs.
+func (m *MdnsManager) AnnouncePairingService(txtRecord *api.ShipPairingTXT) (string, error) {
+	provider := m.mdnsProvider
+	if provider == nil {
+		logging.Log().Debug("mdns: AnnouncePairingService - no provider available")
+		return "", fmt.Errorf("cannot announce pairing service: no provider available")
+	}
+	if txtRecord == nil {
+		logging.Log().Debug("mdns: AnnouncePairingService - txtRecord is nil")
+		return "", fmt.Errorf("txtRecord cannot be nil")
+	}
+	if err := txtRecord.Validate(); err != nil {
+		logging.Log().Debug("mdns: AnnouncePairingService - invalid TXT record:", err)
+		return "", fmt.Errorf("invalid TXT record: %w", err)
+	}
+
+	// Generate stable logical ID and a matching mDNS service name.
+	// Both are based on the same counter so the service name is deterministic
+	// and reused on re-announcement (avoids remote devices seeing a new service).
+	m.announcedPairingsMux.Lock()
+	m.instanceCounter++
+	logicalID := strconv.Itoa(m.instanceCounter)
+	serviceName := m.serviceName + "-pairing#" + logicalID
+	m.announcedPairingsMux.Unlock()
+
+	txtArray := m.convertPairingTXTToArray(txtRecord)
+
+	providerID, err := provider.AnnounceService(shipPairingZeroConfServiceType, serviceName, m.port, txtArray)
+	if err != nil {
+		logging.Log().Debug("mdns: AnnouncePairingService - provider.AnnounceService failed:", err)
+		return "", fmt.Errorf("failed to announce pairing service: %w", err)
+	}
+
+	m.announcedPairingsMux.Lock()
+	m.announcedPairings[logicalID] = &announcedPairing{
+		serviceName: serviceName,
+		txtRecord:   txtRecord,
+		providerID:  providerID,
+	}
+	m.announcedPairingsMux.Unlock()
+
+	return logicalID, nil
+}
+
+// UnannouncePairingService removes a _shippairing._tcp announcement (implements MdnsPairingInterface).
+// logicalID is the value returned by AnnouncePairingService; it remains valid even after
+// interface-change re-announcements.
+func (m *MdnsManager) UnannouncePairingService(logicalID string) error {
+	provider := m.mdnsProvider
+	if provider == nil {
+		return api.ErrPairingNotActive
+	}
+
+	m.announcedPairingsMux.Lock()
+	entry, exists := m.announcedPairings[logicalID]
+	if !exists {
+		m.announcedPairingsMux.Unlock()
+		return fmt.Errorf("pairing logical ID %s not found", logicalID)
+	}
+	providerID := entry.providerID
+	delete(m.announcedPairings, logicalID)
+	m.announcedPairingsMux.Unlock()
+
+	if err := provider.UnannounceService(providerID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// SearchPairingServices searches for _shippairing._tcp services (implements MdnsPairingInterface)
+func (m *MdnsManager) SearchPairingServices(callback func(*api.ShipPairingTXT) bool) error {
+	// Validate callback
+	if callback == nil {
+		return fmt.Errorf("callback cannot be nil")
+	}
+
+	// Ensure the mDNS manager is started
+	// If not started, we need to start it to begin browsing
+	if !m.isStarted {
+		// SearchPairingServices requires a provider to be available
+		// The caller should have called Start() first
+		return fmt.Errorf("mDNS manager not started: call Start() before SearchPairingServices")
+	}
+
+	// Validate provider is available
+	if m.mdnsProvider == nil {
+		return api.ErrMDNSSearchFailed
+	}
+
+	// Register the pairing callback
+	// This will be invoked when processShipPairingMdnsEntry is called via the routing mechanism
+	m.RegisterPairingCallback(callback)
+
+	// The provider infrastructure (both Avahi and Zeroconf) has been enhanced to browse
+	// for both _ship._tcp and _shippairing._tcp services simultaneously.
+	// When a _shippairing._tcp service is discovered, it will be routed through:
+	// processMdnsEntry → detectServiceType → processShipPairingMdnsEntry → callback
+	//
+	// Note: The providers must be explicitly configured to browse for _shippairing._tcp
+	// This is done in avahi.go and zeroconf.go with dual browser instances
+
+	logging.Log().Debug("mdns: pairing service search activated")
+	return nil
+}
+
+// RequestPairingEntries triggers an immediate discovery scan for SHIP Pairing Services (implements MdnsPairingInterface)
+func (m *MdnsManager) RequestPairingEntries() (map[string]*api.ShipPairingTXT, error) {
+	// Ensure the mDNS manager is started
+	if !m.isStarted {
+		return nil, fmt.Errorf("mDNS manager not started: call Start() before RequestPairingEntries")
+	}
+
+	// Return a copy of current pairing entries to avoid race conditions
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	result := make(map[string]*api.ShipPairingTXT)
+	for name, entry := range m.pairingEntries {
+		// Create a copy of the ShipPairingTXT to avoid external modification
+		entryCopy := *entry
+		result[name] = &entryCopy
+	}
+
+	logging.Log().Debug("mdns: returning current pairing entries", "count", len(result))
+	return result, nil
+}
+
+// IsPairingServiceAnnounced returns true if at least one pairing service has been announced
+// and not yet unannounced. Returns true even during interface-loss events when the provider-side
+// announcement is temporarily down, because the logical entry still exists and will be
+// re-announced when interfaces reappear.
+func (m *MdnsManager) IsPairingServiceAnnounced() bool {
+	m.announcedPairingsMux.RLock()
+	has := len(m.announcedPairings) > 0
+	m.announcedPairingsMux.RUnlock()
+	return has
+}
+
+// convertPairingTXTToArray converts ShipPairingTXT to string array for provider (fixed per sub-agent review)
+func (m *MdnsManager) convertPairingTXTToArray(txtRecord *api.ShipPairingTXT) []string {
+	// Fixed ordering per SHIP spec section 7.4
+	fieldOrder := []string{"txtvers", "parType", "forId", "forPar", "trustId",
+		"trustPar", "trustCurve", "type", "trustNonce", "alg", "digest"}
+
+	txtMap := txtRecord.ToMap()
+	var txtArray []string // Dynamic array instead of fixed size
+
+	// Only include non-empty values (fixes mDNS compatibility issue)
+	for _, field := range fieldOrder {
+		if value, exists := txtMap[field]; exists && value != "" {
+			txtArray = append(txtArray, field+"="+value)
+		}
+	}
+
+	return txtArray
+}
+
+// SimulatePairingDiscovery simulates the discovery of a pairing service for testing
+// This method is intended for integration tests to simulate mDNS discovery
+func (m *MdnsManager) SimulatePairingDiscovery(txtRecord *api.ShipPairingTXT) {
+	if txtRecord == nil {
+		return
+	}
+
+	// Create elements map from TXT record
+	elements := map[string]string{
+		"txtvers":    txtRecord.TxtVers,
+		"parType":    txtRecord.ParType,
+		"forId":      txtRecord.ForId,
+		"forPar":     txtRecord.ForPar,
+		"trustId":    txtRecord.TrustId,
+		"trustPar":   txtRecord.TrustPar,
+		"trustCurve": txtRecord.TrustCurve,
+		"type":       txtRecord.Type,
+		"trustNonce": txtRecord.TrustNonce,
+		"alg":        txtRecord.Alg,
+		"digest":     txtRecord.Digest,
+	}
+
+	// Process the simulated discovery
+	m.processShipPairingMdnsEntry(elements, "servicename", false)
 }

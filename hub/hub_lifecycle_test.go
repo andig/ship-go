@@ -31,15 +31,17 @@ func TestHub_Lifecycle_DoubleStart_ReturnsError(t *testing.T) {
 
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
-	mdnsService.EXPECT().Start(gomock.Any()).Return(nil).Times(1)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
+
+	assert.NoError(t, err)
 
 	// First start should succeed
-	err := hub.Start()
+	err = hub.Start()
 	assert.NoError(t, err, "First Start() should succeed")
 	assert.True(t, hub.hasStarted)
 
@@ -65,16 +67,18 @@ func TestHub_Lifecycle_RestartAfterShutdown(t *testing.T) {
 
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
-	mdnsService.EXPECT().Start(gomock.Any()).Return(nil).Times(2)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil).Times(2)
 	mdnsService.EXPECT().Shutdown().Times(2)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
+
+	assert.NoError(t, err)
 
 	// First lifecycle: start then shutdown
-	err := hub.Start()
+	err = hub.Start()
 	assert.NoError(t, err, "First Start() should succeed")
 	assert.True(t, hub.hasStarted)
 
@@ -101,15 +105,17 @@ func TestHub_Lifecycle_ShutdownResetsState(t *testing.T) {
 
 	hubReader := mocks.NewMockHubReaderInterface(ctrl)
 	mdnsService := mocks.NewMockMdnsInterface(ctrl)
-	mdnsService.EXPECT().Start(gomock.Any()).Return(nil).Times(1)
+	mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 	mdnsService.EXPECT().Shutdown().Times(1)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
 
-	err := hub.Start()
+	assert.NoError(t, err)
+
+	err = hub.Start()
 	assert.NoError(t, err)
 	assert.True(t, hub.hasStarted, "hasStarted should be true after Start()")
 
@@ -134,17 +140,19 @@ func TestHub_Lifecycle_RetryAfterMdnsFailure(t *testing.T) {
 
 	// First call fails, second succeeds
 	gomock.InOrder(
-		mdnsService.EXPECT().Start(gomock.Any()).Return(errors.New("mDNS failed")),
-		mdnsService.EXPECT().Start(gomock.Any()).Return(nil),
+		mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(errors.New("mDNS failed")),
+		mdnsService.EXPECT().Start(gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	certificate, _ := cert.CreateCertificate("unit", "org", "DE", "CN")
-	localService := api.NewServiceDetails("localSKI")
+	localService, _ := api.NewServiceDetails("localSKI", "", "")
 
-	hub := NewHub(hubReader, mdnsService, 0, certificate, localService)
+	hub, err := NewHub(hubReader, mdnsService, 0, certificate, localService, nil, nil)
+
+	assert.NoError(t, err)
 
 	// First start fails on mDNS (server starts then gets shut down)
-	err := hub.Start()
+	err = hub.Start()
 	assert.Error(t, err, "First Start() should fail due to mDNS")
 	assert.False(t, hub.hasStarted, "Hub should not be marked as started")
 

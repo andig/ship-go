@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/enbility/ship-go/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -35,6 +36,7 @@ func (z *ZeroconfSuite) AfterTest(suiteName, testName string) {
 type mDNSEntry struct {
 	elements   map[string]string
 	name, host string
+	service    string
 	addresses  []net.IP
 	port       int
 }
@@ -55,14 +57,14 @@ func (z *ZeroconfSuite) Test_Shutdown() {
 // Test_DuplicateStart verifies that calling Start() twice without Shutdown
 // does not launch a second chanListener goroutine.
 func (z *ZeroconfSuite) Test_DuplicateStart() {
-	cb := func(elements map[string]string, name, host string, addresses []net.IP, port int, remove bool) {}
+	cb := func(elements map[string]string, name, host, serviceType string, addresses []net.IP, port int, remove bool) {}
 
-	z.sut.Start(false, cb)
+	z.sut.Start(api.PairingModeBoth, false, cb)
 	time.Sleep(50 * time.Millisecond)
 	goroutinesAfterFirst := runtime.NumGoroutine()
 
 	// Second Start should be a no-op
-	z.sut.Start(false, cb)
+	z.sut.Start(api.PairingModeBoth, false, cb)
 	time.Sleep(50 * time.Millisecond)
 	goroutinesAfterSecond := runtime.NumGoroutine()
 
@@ -75,7 +77,7 @@ func (z *ZeroconfSuite) Test_DuplicateStart() {
 // and the provider is functional after restart.
 func (z *ZeroconfSuite) Test_RestartAfterShutdown() {
 	var addedEntries []mDNSEntry
-	cb := func(elements map[string]string, name, host string, addresses []net.IP, port int, remove bool) {
+	cb := func(elements map[string]string, name, host, serviceType string, addresses []net.IP, port int, remove bool) {
 		z.mux.Lock()
 		if !remove {
 			addedEntries = append(addedEntries, mDNSEntry{elements: elements, name: name, host: host, addresses: addresses, port: port})
@@ -84,8 +86,8 @@ func (z *ZeroconfSuite) Test_RestartAfterShutdown() {
 	}
 
 	// First cycle
-	z.sut.Start(false, cb)
-	err := z.sut.Announce("restart-test-1", 4290, []string{"test=1"})
+	z.sut.Start(api.PairingModeBoth, false, cb)
+	_, err := z.sut.AnnounceService(shipZeroConfServiceType, "restart-test-1", 4290, []string{"test=1"})
 	assert.Nil(z.T(), err)
 	time.Sleep(2 * time.Second)
 	z.sut.Shutdown()
@@ -96,8 +98,8 @@ func (z *ZeroconfSuite) Test_RestartAfterShutdown() {
 	z.mux.Unlock()
 
 	// Second cycle - must work
-	z.sut.Start(false, cb)
-	err = z.sut.Announce("restart-test-2", 4291, []string{"test=2"})
+	z.sut.Start(api.PairingModeBoth, false, cb)
+	_, err = z.sut.AnnounceService(shipZeroConfServiceType, "restart-test-2", 4291, []string{"test=2"})
 	assert.Nil(z.T(), err)
 	time.Sleep(2 * time.Second)
 
@@ -110,7 +112,7 @@ func (z *ZeroconfSuite) Test_RestartAfterShutdown() {
 // Test_GoroutineLeakOnShutdown verifies that goroutines are properly cleaned up
 // after multiple Start->Shutdown cycles on the same provider instance.
 func (z *ZeroconfSuite) Test_GoroutineLeakOnShutdown() {
-	cb := func(elements map[string]string, name, host string, addresses []net.IP, port int, remove bool) {}
+	cb := func(elements map[string]string, name, host, serviceType string, addresses []net.IP, port int, remove bool) {}
 
 	// Use a single provider across multiple cycles (this is what triggers the leak)
 	provider := NewZeroconfProvider([]net.Interface{})
@@ -120,10 +122,10 @@ func (z *ZeroconfSuite) Test_GoroutineLeakOnShutdown() {
 
 	// Run 5 Start/Shutdown cycles on the same instance
 	for i := 0; i < 5; i++ {
-		provider.Start(false, cb)
+		provider.Start(api.PairingModeBoth, false, cb)
 
 		// Announce to ensure Browse goroutines are fully active
-		_ = provider.Announce(fmt.Sprintf("leak-test-%d", i), 4292+i, []string{"test=leak"})
+		_, _ = provider.AnnounceService(shipZeroConfServiceType, fmt.Sprintf("leak-test-%d", i), 4292+i, []string{"test=leak"})
 		time.Sleep(1 * time.Second)
 
 		provider.Shutdown()
@@ -152,7 +154,7 @@ func (z *ZeroconfSuite) Test_GoroutineLeakOnShutdown() {
 func (z *ZeroconfSuite) Test_ZeroConf() {
 	var addedEntries, removedEntries []mDNSEntry
 
-	cb := func(elements map[string]string, name, host string, addresses []net.IP, port int, remove bool) {
+	cb := func(elements map[string]string, name, host string, service string, addresses []net.IP, port int, remove bool) {
 		// we expect at least one entry
 		assert.NotEqual(z.T(), "", name)
 
@@ -160,6 +162,7 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 			elements:  elements,
 			name:      name,
 			host:      host,
+			service:   service,
 			addresses: addresses,
 			port:      port,
 		}
@@ -173,11 +176,15 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 		z.mux.Unlock()
 	}
 
-	boolV := z.sut.Start(false, cb)
+	boolV := z.sut.Start(api.PairingModeListener, false, cb)
 	assert.Equal(z.T(), true, boolV)
 
-	err := z.sut.Announce("dummytest", 4289, []string{"more=more"})
+	boolV = z.sut.Start(api.PairingModeListener, false, cb)
+	assert.Equal(z.T(), true, boolV)
+
+	instanceID, err := z.sut.AnnounceService(shipZeroConfServiceType, "dummytest", 4289, []string{"more=more"})
 	assert.Nil(z.T(), err)
+	assert.NotEmpty(z.T(), instanceID)
 
 	time.Sleep(time.Second * 2)
 
@@ -186,7 +193,7 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 	z.mux.Unlock()
 	assert.Equal(z.T(), true, found)
 
-	z.sut.Unannounce()
+	z.sut.UnannounceService(instanceID)
 
 	time.Sleep(time.Second * 2)
 
@@ -195,8 +202,9 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 	z.mux.Unlock()
 	assert.Equal(z.T(), true, found)
 
-	err = z.sut.Announce("test", 4289, []string{"test=test"})
+	instanceID2, err := z.sut.AnnounceService(shipZeroConfServiceType, "test", 4289, []string{"test=test"})
 	assert.Nil(z.T(), err)
+	assert.NotEmpty(z.T(), instanceID2)
 
 	time.Sleep(time.Second * 2)
 
@@ -205,7 +213,7 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 	z.mux.Unlock()
 	assert.Equal(z.T(), true, found)
 
-	z.sut.Unannounce()
+	z.sut.UnannounceService(instanceID2)
 
 	time.Sleep(time.Second * 2)
 
@@ -214,8 +222,82 @@ func (z *ZeroconfSuite) Test_ZeroConf() {
 	z.mux.Unlock()
 	assert.Equal(z.T(), true, found)
 
-	err = z.sut.Announce("", 4289, []string{"test=test"})
+	_, err = z.sut.AnnounceService(shipZeroConfServiceType, "", 4289, []string{"test=test"})
 	assert.NotNil(z.T(), err)
 
-	z.sut.Unannounce()
+	z.sut.UnannounceService("nonexistent")
+}
+
+func (z *ZeroconfSuite) Test_ZeroConf_Pairing() {
+	var addedEntries, removedEntries []mDNSEntry
+
+	cb := func(elements map[string]string, name, host string, service string, addresses []net.IP, port int, remove bool) {
+		// we expect at least one entry
+		assert.NotEqual(z.T(), "", name)
+
+		entry := mDNSEntry{
+			elements:  elements,
+			name:      name,
+			host:      host,
+			service:   service,
+			addresses: addresses,
+			port:      port,
+		}
+
+		z.mux.Lock()
+		if remove {
+			removedEntries = append(removedEntries, entry)
+		} else {
+			addedEntries = append(addedEntries, entry)
+		}
+		z.mux.Unlock()
+	}
+
+	boolV := z.sut.Start(api.PairingModeListener, false, cb)
+	assert.Equal(z.T(), true, boolV)
+
+	pairingInstanceID, err := z.sut.AnnounceService(shipPairingZeroConfServiceType, "dummytest", 4289, []string{"more=more"})
+	assert.Nil(z.T(), err)
+	assert.NotEmpty(z.T(), pairingInstanceID)
+
+	time.Sleep(time.Second * 2)
+
+	z.mux.Lock()
+	_, found := searchElement(addedEntries, "dummytest")
+	z.mux.Unlock()
+	assert.Equal(z.T(), true, found)
+
+	z.sut.UnannounceService(pairingInstanceID)
+
+	time.Sleep(time.Second * 2)
+
+	z.mux.Lock()
+	_, found = searchElement(removedEntries, "dummytest")
+	z.mux.Unlock()
+	assert.Equal(z.T(), true, found)
+
+	pairingInstanceID2, err := z.sut.AnnounceService(shipPairingZeroConfServiceType, "test", 4289, []string{"test=test"})
+	assert.Nil(z.T(), err)
+	assert.NotEmpty(z.T(), pairingInstanceID2)
+
+	time.Sleep(time.Second * 2)
+
+	z.mux.Lock()
+	_, found = searchElement(addedEntries, "test")
+	z.mux.Unlock()
+	assert.Equal(z.T(), true, found)
+
+	z.sut.UnannounceService(pairingInstanceID2)
+
+	time.Sleep(time.Second * 2)
+
+	z.mux.Lock()
+	_, found = searchElement(removedEntries, "test")
+	z.mux.Unlock()
+	assert.Equal(z.T(), true, found)
+
+	_, err = z.sut.AnnounceService(shipPairingZeroConfServiceType, "", 4289, []string{"test=test"})
+	assert.NotNil(z.T(), err)
+
+	z.sut.UnannounceService("nonexistent")
 }

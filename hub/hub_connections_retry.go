@@ -18,6 +18,11 @@ func (h *Hub) coordinateConnectionInitations(ski string, entry *api.MdnsEntry) {
 
 	counter, duration := h.getConnectionInitiationDelayTime(ski)
 
+	service := h.ServiceForIdentifier(ski, "")
+	if service == nil {
+		return
+	}
+
 	logging.Log().Debugf("delaying connection to %s by %s to minimize double connection probability", ski, duration)
 
 	// Create a cancellable timer
@@ -40,6 +45,11 @@ func (h *Hub) prepareConnectionInitation(ski string, counter int, entry *api.Mdn
 
 	// connection attempt is not relevant if the device is no longer paired
 	// or it is not queued for pairing
+	service := h.ServiceForIdentifier(ski, "")
+	if service == nil {
+		return
+	}
+
 	if !h.IsRemoteServiceForSKIPaired(ski) {
 		return
 	}
@@ -50,9 +60,6 @@ func (h *Hub) prepareConnectionInitation(ski string, counter int, entry *api.Mdn
 	}
 
 	// now initiate the connection
-	// check if the remoteService still exists
-	service := h.ServiceForSKI(ski)
-
 	if success := h.initateConnection(service, entry); !success {
 		h.checkAutoReannounce()
 	}
@@ -79,6 +86,10 @@ func (h *Hub) increaseConnectionAttemptCounter(ski string) int {
 
 // removeConnectionAttemptCounter removes the connection attempt counter for the given ski
 func (h *Hub) removeConnectionAttemptCounter(ski string) {
+	if ski == "" {
+		return
+	}
+
 	h.muxConAttempt.Lock()
 	defer h.muxConAttempt.Unlock()
 

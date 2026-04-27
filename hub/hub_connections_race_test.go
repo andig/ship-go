@@ -17,7 +17,7 @@ import (
 func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 	hub := setupTestHub(t)
 
-	const testSKI = "test-ski-123"
+	const testSKI = "testski123"
 	const numIterations = 100
 
 	for i := 0; i < numIterations; i++ {
@@ -42,7 +42,8 @@ func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Simulate HandleConnectionClosed logic
-			if existingC := hub.connectionForSKI(testSKI); existingC != nil {
+			svcDetails, _ := api.NewServiceDetails(testSKI, "", "")
+			if existingC := hub.connectionForService(svcDetails); existingC != nil {
 				// Small delay to increase race probability
 				time.Sleep(time.Microsecond)
 				if existingC == conn1 {
@@ -62,7 +63,8 @@ func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 		wg.Wait()
 
 		// Verify state is consistent
-		finalConn := hub.connectionForSKI(testSKI)
+		testSvcDetails, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(testSvcDetails)
 		switch finalConn {
 		case nil, conn2:
 			// Expected: either no connection or the second connection
@@ -107,7 +109,7 @@ func TestUnregisterConnectionIfMatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := setupTestHub(t)
-			const testSKI = "test-ski"
+			const testSKI = "testski"
 
 			conn := mocks.NewShipConnectionInterface(t)
 			conn.EXPECT().RemoteSKI().Return(testSKI).Maybe()
@@ -130,7 +132,8 @@ func TestUnregisterConnectionIfMatch(t *testing.T) {
 			assert.Equal(t, tt.expectSuccess, success)
 
 			// Verify connection state
-			finalConn := hub.connectionForSKI(testSKI)
+			testSvcDetails2, _ := api.NewServiceDetails(testSKI, "", "")
+			finalConn := hub.connectionForService(testSvcDetails2)
 			if tt.expectRemoved {
 				assert.Nil(t, finalConn)
 			} else {
@@ -153,7 +156,7 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 	skis := make([]string, numSKIs)
 
 	for i := 0; i < numSKIs; i++ {
-		ski := string(rune('a'+i)) + "-ski"
+		ski := string(rune('a'+i)) + "ski"
 		skis[i] = ski
 
 		conn := mocks.NewShipConnectionInterface(t)
@@ -179,7 +182,8 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 			case 0: // Register
 				hub.registerConnection(conn)
 			case 1: // Read
-				_ = hub.connectionForSKI(ski)
+				skiSvcDetails, _ := api.NewServiceDetails(ski, "", "")
+				_ = hub.connectionForService(skiSvcDetails)
 			case 2: // Unregister if match
 				hub.UnregisterConnectionIfMatch(ski, conn)
 			}
@@ -190,7 +194,8 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 
 	// Verify no panics and state is consistent
 	for i, ski := range skis {
-		conn := hub.connectionForSKI(ski)
+		skiSvc, _ := api.NewServiceDetails(ski, "", "")
+		conn := hub.connectionForService(skiSvc)
 		if conn != nil {
 			assert.Equal(t, connections[i], conn, "Connection mismatch for SKI %s", ski)
 		}
@@ -204,18 +209,18 @@ func setupTestHub(t *testing.T) *Hub {
 
 	// Set up expectations
 	// Use specific type matchers to avoid race conditions with structs containing sync primitives
-	hubReader.EXPECT().RemoteSKIConnected(mock.AnythingOfType("api.ShipConnectionInterface")).Maybe()
-	hubReader.EXPECT().RemoteSKIDisconnected(mock.AnythingOfType("string")).Maybe()
-	hubReader.EXPECT().ServiceShipIDUpdate(mock.AnythingOfType("string"), mock.AnythingOfType("string")).Maybe()
-	hubReader.EXPECT().ServicePairingDetailUpdate(mock.AnythingOfType("string"), mock.AnythingOfType("*api.ConnectionStateDetail")).Maybe()
+	hubReader.EXPECT().RemoteServiceConnected(mock.AnythingOfType("api.ShipConnectionInterface")).Maybe()
+	hubReader.EXPECT().RemoteServiceDisconnected(mock.AnythingOfType("string")).Maybe()
+	hubReader.EXPECT().ServiceUpdated(mock.AnythingOfType("*api.ServiceIdentity")).Maybe()
 
-	service := api.NewServiceDetails("test-ski")
+	service, _ := api.NewServiceDetails("testski", "", "")
 	service.SetShipID("test-ship-id")
 
 	// Create a dummy certificate for testing
 	cert := tls.Certificate{}
 
-	hub := NewHub(hubReader, mdns, 4729, cert, service)
+	hub, err := newTestHub(hubReader, mdns, 4729, cert, service, nil)
+	assert.NoError(t, err)
 
 	return hub
 }

@@ -12,7 +12,10 @@ var _ api.ShipConnectionInfoProviderInterface = (*Hub)(nil)
 
 // check if the SKI is paired
 func (h *Hub) IsRemoteServiceForSKIPaired(ski string) bool {
-	service := h.ServiceForSKI(ski)
+	service := h.ServiceForIdentifier(ski, "")
+	if service == nil {
+		return false
+	}
 
 	return service.Trusted()
 }
@@ -31,38 +34,75 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 		h.removeConnectionAttemptCounter(connection.RemoteSKI())
 	}
 
-	h.hubReader.RemoteSKIDisconnected(connection.RemoteSKI())
-
 	// Do not automatically reconnect if handshake failed and not already paired
-	remoteService := h.ServiceForSKI(connection.RemoteSKI())
-	if !handshakeCompleted && !remoteService.Trusted() {
+	remoteService := h.ServiceForIdentifier(connection.RemoteSKI(), "")
+	if remoteService == nil || (!handshakeCompleted && !remoteService.Trusted()) {
+		// Convert SKI to ServiceIdentity for callback
+		disconnectedIdentity := api.SKIToServiceIdentity(connection.RemoteSKI())
+		h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
 		return
+	}
+
+	disconnectedIdentity := remoteService.ToServiceIdentity()
+	h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
+
+	// Cancel any announcement lifetime timer for this device
+	if remoteService.ShipID() != "" {
+		h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
+	}
+
+	// Cancel any announcement lifetime timer for this device for devZ
+	if h.pairingService != nil && h.pairingConfig != nil && (h.pairingConfig.Mode == api.PairingModeAnnouncer || h.pairingConfig.Mode == api.PairingModeBoth) {
+		if remoteService.ShipID() != "" {
+			h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
+		}
 	}
 
 	h.checkAutoReannounce()
 }
 
 // report the ship ID provided during the handshake
-func (h *Hub) ReportServiceShipID(ski string, shipdID string) {
-	h.hubReader.ServiceShipIDUpdate(ski, shipdID)
+func (h *Hub) ReportServiceShipID(ski string, shipID string) {
+	// Update registry with discovered ShipID if it was empty
+	service := h.ServiceForIdentifier(ski, "")
+	if service == nil {
+		return
+	}
+	if service.ShipID() == "" {
+		service.SetShipID(shipID)
+	}
+
+	// Get ServiceIdentity for callbacks
+	connectedIdentity := service.ToServiceIdentity()
+
+	h.hubReader.ServiceUpdated(connectedIdentity)
 }
 
 // check if the user is still able to trust the connection
 func (h *Hub) AllowWaitingForTrust(ski string) bool {
-	if service := h.ServiceForSKI(ski); service != nil {
+	var waitingIdentity api.ServiceIdentity
+	if service := h.ServiceForIdentifier(ski, ""); service != nil {
 		if service.Trusted() {
 			return true
 		}
+		waitingIdentity = service.ToServiceIdentity()
+	} else {
+		waitingIdentity = api.SKIToServiceIdentity(ski)
 	}
 
-	return h.hubReader.AllowWaitingForTrust(ski)
+	return h.hubReader.AllowWaitingForTrust(waitingIdentity)
 }
 
 // report the updated SHIP handshake state and optional error message for a SKI
 func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) {
+	service := h.ServiceForIdentifier(ski, "")
+	// this should never happen, as we can't have a connection without a service added
+	if service == nil {
+		return
+	}
+
 	// overwrite service Paired value
 	if state.State == model.SmeHelloStateOk {
-		service := h.ServiceForSKI(ski)
 		service.SetTrusted(true)
 	}
 
@@ -73,16 +113,32 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 
 	pairingDetail := api.NewConnectionStateDetail(pairingState, state.Error)
 
-	service := h.ServiceForSKI(ski)
-
 	existingDetails := service.ConnectionStateDetail()
 	existingState := existingDetails.State()
 	if existingState != pairingState || !errors.Is(existingDetails.Error(), state.Error) {
 		service.SetConnectionStateDetail(pairingDetail)
 
 		if pairingState == api.ConnectionStateCompleted {
-			// inform the application about a successful connection
-			h.hubReader.RemoteSKIConnected(ski)
+			connectedIdentity := service.ToServiceIdentity()
+			h.hubReader.RemoteServiceConnected(connectedIdentity)
+			// Stop AddCu replacement timer when connection successfully completes
+			// Stop announcement for successfully connected device
+			h.StopAddCuReplacementTimer(service)
+
+			// Stop the pairing listener we have a AddCu device successful connection
+			if service.PairingType() == api.PairingTypeAddCu {
+				h.stopPairingListener()
+			}
+
+			if shipID := service.ShipID(); shipID != "" {
+				if h.IsAnnouncingTo(shipID) {
+					// Start the lifetime timer; if the connection drops before expiry,
+					// the timer is cancelled in HandleConnectionClosed.
+					h.announcementLifetimeTracker.StartLifetimeTimer(shipID, func(expiredShipID string) {
+						_ = h.StopAnnouncementTo(expiredShipID)
+					})
+				}
+			}
 		}
 
 		// always send a delayed update, as the processing of the new state has to be done
@@ -90,12 +146,21 @@ func (h *Hub) HandleShipHandshakeStateUpdate(ski string, state model.ShipState) 
 		// acting upon the new state is safe
 		go func() {
 			<-time.After(time.Millisecond * 500)
-			h.hubReader.ServicePairingDetailUpdate(ski, pairingDetail)
+			// Convert SKI to ServiceIdentity for callback
+			pairingIdentity := service.ToServiceIdentity()
+			h.hubReader.ServicePairingDetailUpdate(pairingIdentity, pairingDetail)
 		}()
 	}
 }
 
 // report an approved handshake by a remote device
-func (h *Hub) SetupRemoteDevice(ski string, writeI api.ShipConnectionDataWriterInterface) api.ShipConnectionDataReaderInterface {
-	return h.hubReader.SetupRemoteDevice(ski, writeI)
+func (h *Hub) SetupRemoteService(ski string, writeI api.ShipConnectionDataWriterInterface) api.ShipConnectionDataReaderInterface {
+	// Convert SKI to ServiceIdentity for callback
+	var setupIdentity api.ServiceIdentity
+	if service := h.ServiceForIdentifier(ski, ""); service != nil {
+		setupIdentity = service.ToServiceIdentity()
+	} else {
+		setupIdentity = api.SKIToServiceIdentity(ski)
+	}
+	return h.hubReader.SetupRemoteService(setupIdentity, writeI)
 }

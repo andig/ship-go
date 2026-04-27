@@ -12,10 +12,13 @@ This document provides a comprehensive overview of the ship-go library architect
 - [Threading and Concurrency](#threading-and-concurrency)
 - [Error Handling](#error-handling)
 - [Extension Points](#extension-points)
+- [SHIP Pairing Service](#ship-pairing-service)
 
 ## Overview
 
 ship-go is a Go implementation of the SHIP (Smart Home IP) protocol version 1.0.1, which is part of the EEBUS specification. It provides secure device discovery, pairing, and communication capabilities for smart home energy management systems.
+
+**Note**: This document covers the core SHIP 1.0.1 architecture. For the SHIP Pairing Service implementation (automatic pairing, QR codes, Device Replacement Timing Logic), see **[ARCHITECTURE_SHIPPAIRING.md](ARCHITECTURE_SHIPPAIRING.md)**.
 
 ## System Architecture
 
@@ -37,6 +40,7 @@ graph TB
             HUB[Hub<br/>Coordinator]
             SHIP[SHIP<br/>Connection]
             MDNS[mDNS<br/>Manager]
+            PAIR[SHIP Pairing<br/>Service]
         end
         
         subgraph "Transport Layer"
@@ -57,7 +61,9 @@ graph TB
     HI --> HUB
     HUB --> SHIP
     HUB --> MDNS
+    HUB --> PAIR
     HUB -.->|Events| HRI
+    PAIR --> MDNS
     SHIP --> WS
     SHIP --> CERT
     MDNS --> NET
@@ -67,6 +73,7 @@ graph TB
     style HUB fill:#fff3e0
     style SHIP fill:#f3e5f5
     style MDNS fill:#e8f5e9
+    style PAIR fill:#e3f2fd
     style WS fill:#fce4ec
     style CERT fill:#fff9c4
 ```
@@ -131,28 +138,36 @@ classDiagram
         -remoteServices map[string]RemoteService
         -mdns MdnsInterface
         -server WebsocketServer
-        +Start()
-        +Stop()
-        +RegisterRemoteService(service)
-        +PairRemoteService(ski)
-        +UnpairRemoteService(ski)
-        +ConnectionForSKI(ski) ShipConnection
+        +Start() error
+        +Shutdown()
+        +RegisterRemoteService(identity ServiceIdentity)
+        +UnregisterRemoteService(identity ServiceIdentity)
+        +PairingDetailFor(identity ServiceIdentity) *ConnectionStateDetail
+        +DisconnectService(identity ServiceIdentity, reason string)
+        +CancelPairing(identity ServiceIdentity)
     }
     
     class HubInterface {
         <<interface>>
         +Start() error
-        +Stop()
-        +RegisterRemoteService(service)
-        +PairRemoteService(ski)
-        +ServiceForSKI(ski) RemoteService
+        +Shutdown()
+        +SetAutoAccept(bool)
+        +RegisterRemoteService(identity ServiceIdentity)
+        +UnregisterRemoteService(identity ServiceIdentity)
+        +PairingDetailFor(identity ServiceIdentity) *ConnectionStateDetail
+        +DisconnectService(identity ServiceIdentity, reason string)
+        +CancelPairing(identity ServiceIdentity)
     }
     
     class HubReaderInterface {
         <<interface>>
-        +ServiceConnectionStateChanged(ski, state)
-        +ServicePairingDetailUpdate(ski, detail)
-        +AllowWaitingForTrust(ski) bool
+        +RemoteServiceConnected(identity ServiceIdentity)
+        +RemoteServiceDisconnected(identity ServiceIdentity)
+        +SetupRemoteService(identity ServiceIdentity, writeI ShipConnectionDataWriterInterface) ShipConnectionDataReaderInterface
+        +VisibleRemoteMdnsServicesUpdated(entries []RemoteMdnsService)
+        +ServiceUpdated(identity ServiceIdentity)
+        +ServicePairingDetailUpdate(identity ServiceIdentity, detail *ConnectionStateDetail)
+        +AllowWaitingForTrust(identity ServiceIdentity) bool
     }
     
     Hub ..|> HubInterface
@@ -165,6 +180,17 @@ classDiagram
 - Handles device pairing and connection state management
 - Maintains registry of known remote services
 - Prevents double connections using SKI comparison
+
+**ServiceIdentity-Based Architecture:**
+The Hub uses a flexible ServiceIdentity-based API that supports multiple device identification methods:
+- **SKI (Subject Key Identifier)**: Primary certificate-based identification
+- **Certificate Fingerprint**: SHA-256 hash for additional validation
+- **SHIP ID**: Protocol-level device identifier
+
+This design supports the complete device lifecycle where identifiers may be discovered incrementally:
+1. Initial discovery via mDNS (fingerprint available)
+2. Connection establishment (SKI and SHIP ID discovered)
+3. SHIP Pairing Service integration (automatic trust with fingerprint-first identification)
 
 ### 2. SHIP Connection (`ship/`)
 Implements the SHIP protocol handshake and message routing.
@@ -257,10 +283,10 @@ sequenceDiagram
         Remote->>Net: Service Announcement
         Net->>mDNS: Service Found
         mDNS->>Hub: ServiceFound(details)
-        Hub->>App: ServiceConnectionStateChanged()
+        Hub->>App: VisibleRemoteServicesUpdated()
     end
     
-    App->>Hub: PairRemoteService(ski)
+    App->>Hub: RegisterRemoteService(ski, fingerprint, shipID)
     Hub->>Hub: CreateConnection()
     Hub->>Remote: WebSocket Connect
     Remote->>Hub: Accept Connection
@@ -546,5 +572,16 @@ graph TB
 - **Network**: Multicast-enabled network for mDNS
 - **Ports**: Configurable WebSocket server port (default: 4712)
 - **Permissions**: Network access for mDNS and WebSocket
+
+## SHIP Pairing Service
+
+For the complete architecture and implementation details of the SHIP Pairing Service (automatic device pairing with QR codes, HMAC authentication, and Device Replacement Timing Logic), see **[ARCHITECTURE_SHIPPAIRING.md](ARCHITECTURE_SHIPPAIRING.md)**.
+
+The SHIP Pairing Service extends the traditional SHIP 1.0.1 architecture with:
+- Automatic device discovery and trust establishment
+- QR code-based pairing initialization  
+- HMAC-SHA256 authentication with replay protection
+- 15-minute AddCu device replacement timing logic
+- ServiceIdentity-based Hub API design
 
 This architecture provides a robust, secure, and extensible foundation for EEBUS device communication while maintaining clean separation of concerns and platform flexibility.

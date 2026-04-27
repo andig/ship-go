@@ -3,6 +3,7 @@ package mdns
 import (
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,9 +48,10 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 	var announceCalls atomic.Int32
 
 	provider := mocks.NewMdnsProviderInterface(s.T())
+	provider.On("Start", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(true)
 	provider.On("Shutdown").Maybe().Return()
-	provider.On("Unannounce").Maybe().Return()
-	provider.On("Announce", mock.Anything, mock.Anything, mock.Anything).
+	provider.On("UnannounceService", mock.Anything).Maybe().Return()
+	provider.On("AnnounceService", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			call := announceCalls.Add(1)
 			if call >= 2 {
@@ -62,16 +64,19 @@ func (s *IssuesSuite) Test_ShutdownWaitsForRefreshGoroutineToExit() {
 				<-announceBlock
 			}
 		}).
-		Return(nil)
+		Return("", nil)
 
 	mgr := NewMDNS("test", "brand", "model", "EnergyManagementSystem",
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
-		4729, []string{usableIfaceName}, MdnsProviderSelectionAll)
-	mgr.SetTestProvider(provider)
+		4729, []string{usableIfaceName}, MdnsProviderSelectionTestSetup)
+	mgr.SetMdnsProvider(provider)
 
-	err := mgr.Start(mocks.NewMdnsReportInterface(s.T()))
+	report := mocks.NewMdnsReportInterface(s.T())
+	report.On("ReportMdnsEntries", mock.Anything, mock.Anything).Maybe().Return()
+
+	err := mgr.Start(api.PairingModeOff, report)
 	assert.Nil(s.T(), err)
 
 	// Stop the default refresh goroutine (which has a 15s ticker we
@@ -157,18 +162,19 @@ func (s *IssuesSuite) Test_ProviderAccessSynchronizedWithShutdown() {
 
 	for i := 0; i < 20; i++ {
 		provider := mocks.NewMdnsProviderInterface(s.T())
+		provider.On("Start", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(true)
 		provider.On("Shutdown").Maybe().Return()
-		provider.On("Unannounce").Maybe().Return()
-		provider.On("Announce", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+		provider.On("UnannounceService", mock.Anything).Maybe().Return()
+		provider.On("AnnounceService", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return("", nil)
 
 		mgr := NewMDNS("test", "brand", "model", "EnergyManagementSystem",
 			"12345",
 			[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 			"shipid", "serviceName",
-			4729, []string{usableIfaceName}, MdnsProviderSelectionAll)
-		mgr.SetTestProvider(provider)
+			4729, []string{usableIfaceName}, MdnsProviderSelectionTestSetup)
+		mgr.SetMdnsProvider(provider)
 
-		err := mgr.Start(report)
+		err := mgr.Start(api.PairingModeBoth, report)
 		assert.Nil(s.T(), err)
 
 		// Simulate an interface change so the refresh goroutine will
@@ -204,10 +210,12 @@ type trackingProvider struct {
 	interfacesUpdated atomic.Bool
 }
 
-func (t *trackingProvider) Start(bool, api.MdnsResolveCB) bool    { return true }
-func (t *trackingProvider) Shutdown()                              {}
-func (t *trackingProvider) Announce(string, int, []string) error   { return nil }
-func (t *trackingProvider) Unannounce()                            {}
+func (t *trackingProvider) Start(api.PairingMode, bool, api.MdnsResolveCB) bool { return true }
+func (t *trackingProvider) Shutdown()                                           {}
+func (t *trackingProvider) AnnounceService(string, string, int, []string) (string, error) {
+	return "", nil
+}
+func (t *trackingProvider) UnannounceService(string) error { return nil }
 func (t *trackingProvider) UpdateInterfaces([]net.Interface, []int32) {
 	t.interfacesUpdated.Store(true)
 }
@@ -219,7 +227,7 @@ func (s *IssuesSuite) Test_UpdateProviderInterfacesWorksForAnyProvider() {
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
-		4729, nil, MdnsProviderSelectionAll)
+		4729, nil, MdnsProviderSelectionTestSetup)
 	mgr.mdnsProvider = tp
 
 	testIfaces := []net.Interface{{Name: "eth0", Index: 1}}
@@ -247,8 +255,8 @@ func (s *IssuesSuite) Test_UpdateProviderInterfacesWorksForAnyProvider() {
 func (s *IssuesSuite) Test_IsAnnouncedResetAfterShutdownWithPanic() {
 	provider := mocks.NewMdnsProviderInterface(s.T())
 	provider.On("Shutdown").Maybe().Return()
-	provider.On("Announce", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
-	provider.On("Unannounce").Run(func(args mock.Arguments) {
+	provider.On("AnnounceService", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return("", nil)
+	provider.On("UnannounceService", mock.Anything).Run(func(args mock.Arguments) {
 		panic("simulated unannounce panic")
 	}).Return()
 
@@ -256,8 +264,8 @@ func (s *IssuesSuite) Test_IsAnnouncedResetAfterShutdownWithPanic() {
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
-		4729, []string{"fake_iface_issue4"}, MdnsProviderSelectionAll)
-	mgr.SetTestProvider(provider)
+		4729, []string{"fake_iface_issue4"}, MdnsProviderSelectionTestSetup)
+	mgr.SetMdnsProvider(provider)
 	mgr.mdnsProvider = provider
 	mgr.setIsServiceAnnounce(true)
 
@@ -298,7 +306,7 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 
 		// First call: EntryGroupNew fails
 		avahiMock.EXPECT().EntryGroupNew().Return(nil, someError).Once()
-		err := sut.Announce("test", 4729, []string{"txt=1"})
+		_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
 		assert.NotNil(s.T(), err)
 
 		// Second call: must not deadlock (mutex was released on error)
@@ -312,7 +320,8 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 
 		done := make(chan error, 1)
 		go func() {
-			done <- sut.Announce("test", 4729, []string{"txt=1"})
+			_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
+			done <- err
 		}()
 
 		select {
@@ -339,7 +348,7 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 			"", mock.Anything, mock.Anything,
 		).Return(someError).Once()
 		avahiMock.EXPECT().EntryGroupFree(entryGroupMock).Return().Once()
-		err := sut.Announce("test", 4729, []string{"txt=1"})
+		_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
 		assert.NotNil(s.T(), err)
 
 		// Second call: must not deadlock
@@ -354,7 +363,8 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 
 		done := make(chan error, 1)
 		go func() {
-			done <- sut.Announce("test", 4729, []string{"txt=1"})
+			_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
+			done <- err
 		}()
 
 		select {
@@ -382,7 +392,7 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 		).Return(nil).Once()
 		entryGroupMock.EXPECT().Commit().Return(someError).Once()
 		avahiMock.EXPECT().EntryGroupFree(entryGroupMock).Return().Once()
-		err := sut.Announce("test", 4729, []string{"txt=1"})
+		_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
 		assert.NotNil(s.T(), err)
 
 		// Second call: must not deadlock
@@ -397,7 +407,8 @@ func (s *IssuesSuite) Test_AvahiAnnounceMutexReleasedOnAllErrorPaths() {
 
 		done := make(chan error, 1)
 		go func() {
-			done <- sut.Announce("test", 4729, []string{"txt=1"})
+			_, err := sut.AnnounceService(shipZeroConfServiceType, "test", 4729, []string{"txt=1"})
+			done <- err
 		}()
 
 		select {
@@ -455,9 +466,15 @@ func (s *IssuesSuite) Test_AvahiShutdownDoesNotDeadlockOnBusyChanListener() {
 		int32(-1), int32(-1),
 		shipZeroConfServiceType, shipZeroConfDomain,
 		uint32(0)).Return(serviceBrowserMock, nil).Once()
+	avahiMock.EXPECT().ServiceBrowserNew(
+		mock.AnythingOfType("chan avahi.Service"),
+		mock.AnythingOfType("chan avahi.Service"),
+		int32(-1), int32(-1),
+		shipPairingZeroConfServiceType, shipZeroConfDomain,
+		uint32(0)).Return(serviceBrowserMock, nil).Once()
 
-	noopCB := func(map[string]string, string, string, []net.IP, int, bool) {}
-	assert.True(s.T(), sut.Start(true, noopCB))
+	noopCB := func(map[string]string, string, string, string, []net.IP, int, bool) {}
+	assert.True(s.T(), sut.Start(api.PairingModeBoth, true, noopCB))
 
 	// Park chanListener inside processService: ResolveService blocks on a
 	// signal. By the time it runs, chanListener has already received from
@@ -495,7 +512,7 @@ func (s *IssuesSuite) Test_AvahiShutdownDoesNotDeadlockOnBusyChanListener() {
 	}
 
 	// Mocks used on the Shutdown path.
-	avahiMock.EXPECT().ServiceBrowserFree(serviceBrowserMock).Return().Once()
+	avahiMock.EXPECT().ServiceBrowserFree(serviceBrowserMock).Return().Maybe()
 	avahiMock.EXPECT().Shutdown().Return().Once()
 
 	// Invoke Shutdown() from a goroutine and measure its liveness. With
@@ -540,50 +557,68 @@ func (s *IssuesSuite) Test_AvahiShutdownDoesNotDeadlockOnBusyChanListener() {
 }
 
 // ---------------------------------------------------------------------
-// MdnsManager.SetAutoAccept() calls Unannounce() before re-announcing,
-// unlike reannounceWithNewInterfaces() which uses create-then-swap.
-// The explicit Unannounce sends mDNS goodbye packets, causing remote
-// devices to think the service left the network. It also performs
-// blocking I/O (DBus / zeroconf Shutdown) that compounds with the
+// MdnsManager.SetAutoAccept() must not tear down the announcement before
+// the new one is live. The old (pre-PR-#76) implementation called
+// Unannounce() → Announce(), which sent mDNS goodbye packets causing
+// remote devices to think the service left the network. It also performed
+// blocking I/O (DBus / zeroconf Shutdown) that compounded with the
 // muxReg lock-hold issue in Hub.SetAutoAccept.
 //
-// Reproducer: Set up an announced MdnsManager, call SetAutoAccept,
-// and verify that the provider's Unannounce() is NOT called — only
-// Announce() should be called (create-then-swap pattern).
+// In the current (per-service-ID) provider API, the correct pattern is
+// create-then-swap: AnnounceService for the new instance first, then
+// UnannounceService on the old ID. No goodbye gap is visible to peers.
 //
-// EXPECTED (current code): FAIL — Unannounce is called.
-// EXPECTED (after fix):    PASS — only Announce is called.
+// Reproducer: set up an announced MdnsManager, call SetAutoAccept, and
+// verify that the new AnnounceService is observed before any old-ID
+// UnannounceService.
 // ---------------------------------------------------------------------
 
-func (s *IssuesSuite) Test_SetAutoAcceptDoesNotCallUnannounce() {
-	var unannounced atomic.Bool
+func (s *IssuesSuite) Test_SetAutoAcceptUsesCreateThenSwap() {
+	var (
+		mu             sync.Mutex
+		newAnnounceAt  int
+		oldUnannounceAt int
+		callSeq        int
+	)
 
 	provider := mocks.NewMdnsProviderInterface(s.T())
-	provider.On("Announce", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
-	provider.On("Unannounce").Maybe().Run(func(_ mock.Arguments) {
-		unannounced.Store(true)
-	}).Return()
+	provider.EXPECT().
+		AnnounceService(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_, _ string, _ int, _ []string) (string, error) {
+			mu.Lock()
+			callSeq++
+			newAnnounceAt = callSeq
+			mu.Unlock()
+			return "new-id", nil
+		}).Once()
+
+	provider.EXPECT().
+		UnannounceService("old-id").
+		RunAndReturn(func(_ string) error {
+			mu.Lock()
+			callSeq++
+			oldUnannounceAt = callSeq
+			mu.Unlock()
+			return nil
+		}).Once()
 
 	mgr := NewMDNS("test", "brand", "model", "EnergyManagementSystem",
 		"12345",
 		[]api.DeviceCategoryType{api.DeviceCategoryTypeEnergyManagementSystem},
 		"shipid", "serviceName",
 		4729, nil, MdnsProviderSelectionAll)
-	mgr.SetTestProvider(provider)
 	mgr.mdnsProvider = provider
+	mgr.instanceID = "old-id"
 	mgr.setIsServiceAnnounce(true)
 
 	mgr.SetAutoAccept(true)
 
-	// The provider's Announce should have been called (to re-announce
-	// with the updated autoaccept TXT record).
-	provider.AssertCalled(s.T(), "Announce", mock.Anything, mock.Anything, mock.Anything)
-
-	// Unannounce should NOT have been called. The create-then-swap
-	// pattern used by reannounceWithNewInterfaces avoids goodbye
-	// packets that disrupt remote devices.
-	assert.False(s.T(), unannounced.Load(),
-		"SetAutoAccept must not call Unannounce — use create-then-swap like reannounceWithNewInterfaces")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.NotZero(s.T(), newAnnounceAt, "new AnnounceService must be called")
+	assert.NotZero(s.T(), oldUnannounceAt, "old UnannounceService must be called to reclaim the instance")
+	assert.Less(s.T(), newAnnounceAt, oldUnannounceAt,
+		"new AnnounceService must run before UnannounceService(old) — create-then-swap avoids goodbye gap")
 }
 
 // Helper: verify avahi.InterfaceUnspec is what we expect

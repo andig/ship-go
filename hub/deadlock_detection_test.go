@@ -43,13 +43,14 @@ func TestHubMutexOrderingDeadlock(t *testing.T) {
 		// Operation 2: Check pairing details (might need muxReg)
 		go func() {
 			defer wg.Done()
-			_ = hub.ServiceForSKI("ski-1")
+			_ = hub.ServiceForIdentifier("ski-1", "")
 		}()
 
 		// Operation 3: Connection lookup (needs muxCon)
 		go func() {
 			defer wg.Done()
-			_ = hub.connectionForSKI("ski-1")
+			svc, _ := api.NewServiceDetails("ski-1", "", "")
+			_ = hub.connectionForService(svc)
 		}()
 	}
 
@@ -72,7 +73,7 @@ func TestHubMutexOrderingDeadlock(t *testing.T) {
 func TestConnectionRegistrationRace(t *testing.T) {
 	hub := setupTestHub(t)
 
-	const testSKI = "test-ski"
+	const testSKI = "testski"
 	const iterations = 1000
 
 	successfulRegistrations := int64(0)
@@ -101,7 +102,8 @@ func TestConnectionRegistrationRace(t *testing.T) {
 			defer wg.Done()
 
 			// Simulate the pattern from HandleConnectionClosed
-			existingConn := hub.connectionForSKI(testSKI)
+			svc, _ := api.NewServiceDetails(testSKI, "", "")
+			existingConn := hub.connectionForService(svc)
 			if existingConn == conn1 {
 				// Small delay to increase race probability
 				time.Sleep(time.Microsecond)
@@ -127,7 +129,8 @@ func TestConnectionRegistrationRace(t *testing.T) {
 		wg.Wait()
 
 		// Verify final state
-		finalConn := hub.connectionForSKI(testSKI)
+		svc, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(svc)
 
 		// With the race condition, we might have:
 		// 1. No connection (conn1 deleted, conn2 not registered due to timing)
@@ -157,7 +160,7 @@ func TestConnectionRegistrationRace(t *testing.T) {
 func TestAtomicUnregisterIfMatch(t *testing.T) {
 	hub := setupTestHub(t)
 
-	const testSKI = "test-ski"
+	const testSKI = "testski"
 	const iterations = 1000
 
 	for i := 0; i < iterations; i++ {
@@ -198,7 +201,8 @@ func TestAtomicUnregisterIfMatch(t *testing.T) {
 		wg.Wait()
 
 		// Verify final state is consistent
-		finalConn := hub.connectionForSKI(testSKI)
+		svc, _ := api.NewServiceDetails(testSKI, "", "")
+		finalConn := hub.connectionForService(svc)
 
 		// With atomic operations, we should have either:
 		// 1. conn2 (if unregister succeeded and register happened after)
@@ -233,7 +237,7 @@ func TestHubStressWithAllOperations(t *testing.T) {
 	skis := make([]string, numSKIs)
 
 	for i := 0; i < numSKIs; i++ {
-		ski := string(rune('a'+i)) + "-ski"
+		ski := string(rune('a'+i)) + "ski"
 		skis[i] = ski
 
 		conn := mocks.NewShipConnectionInterface(t)
@@ -311,7 +315,8 @@ func TestHubStressWithAllOperations(t *testing.T) {
 				default:
 					idx := workerID % numSKIs
 					monitorOperation(func() {
-						_ = hub.connectionForSKI(skis[idx])
+						svc, _ := api.NewServiceDetails(skis[idx], "", "")
+						_ = hub.connectionForService(svc)
 					}, &lookups)
 					time.Sleep(time.Microsecond * 50)
 				}
@@ -331,7 +336,7 @@ func TestHubStressWithAllOperations(t *testing.T) {
 				default:
 					idx := workerID % numSKIs
 					monitorOperation(func() {
-						_ = hub.ServiceForSKI(skis[idx])
+						_ = hub.ServiceForIdentifier(skis[idx], "")
 					}, &pairingChecks)
 					time.Sleep(time.Microsecond * 200)
 				}
@@ -374,20 +379,20 @@ func TestHubStressWithAllOperations(t *testing.T) {
 	assert.Less(t, contentionRate, 0.01, "High contention rate detected: %.2f%%", contentionRate*100)
 }
 
-// TestSetAutoAccept_DoesNotBlockServiceForSKI reproduces the stall described
+// TestSetAutoAccept_DoesNotBlockServiceLookup reproduces the stall described
 // in auto-connect-issue.md: Hub.SetAutoAccept holds muxReg (write lock)
 // while calling h.mdns.SetAutoAccept, which may perform slow network I/O
-// (DBus / zeroconf). Any concurrent caller of ServiceForSKI (or any other
-// muxReg consumer) is blocked for the entire duration of that I/O.
+// (DBus / zeroconf). Any concurrent caller of a muxReg consumer (e.g.
+// ServiceForIdentifier) is blocked for the entire duration of that I/O.
 //
 // The test injects a mock MdnsInterface whose SetAutoAccept blocks on a
-// channel, simulating a slow provider. A second goroutine attempts
-// ServiceForSKI. If muxReg is still held during the mDNS call,
-// ServiceForSKI cannot proceed and the test times out — exposing the bug.
+// channel, simulating a slow provider. A second goroutine calls
+// ServiceForIdentifier. If muxReg is still held during the mDNS call,
+// the lookup cannot proceed and the test times out — exposing the bug.
 //
-// EXPECTED (current code): FAIL — timeout, ServiceForSKI blocked.
-// EXPECTED (after fix):    PASS — ServiceForSKI completes immediately.
-func TestSetAutoAccept_DoesNotBlockServiceForSKI(t *testing.T) {
+// EXPECTED (current code): FAIL — timeout, lookup blocked.
+// EXPECTED (after fix):    PASS — lookup completes immediately.
+func TestSetAutoAccept_DoesNotBlockServiceLookup(t *testing.T) {
 	hub := setupTestHub(t)
 
 	// Channel that keeps the mock's SetAutoAccept blocked until we close it,
@@ -414,18 +419,18 @@ func TestSetAutoAccept_DoesNotBlockServiceForSKI(t *testing.T) {
 	// Give goroutine 1 a moment to acquire the lock and enter the mock.
 	time.Sleep(20 * time.Millisecond)
 
-	// Goroutine 2: try ServiceForSKI, which also needs muxReg.
+	// Goroutine 2: try a muxReg consumer.
 	done := make(chan struct{})
 	go func() {
-		_ = hub.ServiceForSKI("some-ski")
+		_ = hub.ServiceForIdentifier("some-ski", "some-fp")
 		close(done)
 	}()
 
 	select {
 	case <-done:
-		// PASS: ServiceForSKI was not blocked by the mDNS call.
+		// PASS: lookup was not blocked by the mDNS call.
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("ServiceForSKI blocked for >500ms — muxReg is held during mDNS SetAutoAccept I/O")
+		t.Fatal("ServiceForIdentifier blocked for >500ms — muxReg is held during mDNS SetAutoAccept I/O")
 	}
 
 	// Release the blocked goroutine and wait for it to finish,

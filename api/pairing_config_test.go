@@ -1,0 +1,155 @@
+package api
+
+import (
+	"encoding/hex"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestDefaultPairingConfig(t *testing.T) {
+	// TDD Test: DefaultPairingConfig should create valid configuration with sensible defaults
+
+	secret := PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF")) // 32-byte textual representation
+	mode := PairingModeListener
+
+	config := NewPairingConfig(mode, secret)
+
+	// Test core configuration is set correctly
+	assert.Equal(t, secret, config.Secret)
+	assert.Equal(t, 16, len(secret))
+	assert.Equal(t, mode, config.Mode)
+}
+
+func TestDefaultPairingConfig_DifferentModes(t *testing.T) {
+	// TDD Test: DefaultPairingConfig should work with all pairing modes
+
+	secret := PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
+
+	modes := []PairingMode{
+		PairingModeOff,
+		PairingModeListener,
+		PairingModeAnnouncer,
+		PairingModeBoth,
+	}
+
+	for _, mode := range modes {
+		config := NewPairingConfig(mode, secret)
+		require.NotNil(t, config)
+		assert.Equal(t, secret, config.Secret)
+		assert.Equal(t, mode, config.Mode)
+	}
+}
+
+func TestPairingConfig_CustomConfiguration(t *testing.T) {
+	// TDD Test: PairingConfig should allow custom configuration
+
+	secret := PairingSecret(mustHexToBytes("FEDCBA9876543210FEDCBA9876543210"))
+
+	config := &PairingConfig{
+		Mode:   PairingModeAnnouncer,
+		Secret: secret,
+	}
+
+	// Test custom values are preserved
+	assert.Equal(t, secret, config.Secret)
+	assert.Equal(t, PairingModeAnnouncer, config.Mode)
+}
+
+func TestPairingConfig_ZeroValues(t *testing.T) {
+	// TDD Test: PairingConfig should handle zero values appropriately
+
+	config := &PairingConfig{}
+
+	// Zero values should be valid (Hub will provide defaults where needed)
+	assert.Equal(t, PairingSecret(nil), config.Secret)
+	assert.Equal(t, PairingModeOff, config.Mode) // Zero value of PairingMode
+}
+
+func TestPairingConfig_Validate(t *testing.T) {
+	// TDD Test: PairingConfig.Validate should check for valid configuration
+
+	t.Run("ValidConfiguration", func(t *testing.T) {
+		secret := PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
+		config := NewPairingConfig(PairingModeListener, secret)
+
+		err := config.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("NilConfig", func(t *testing.T) {
+		var config *PairingConfig
+		err := config.Validate()
+		assert.NoError(t, err) // nil config should be valid
+	})
+
+	t.Run("SecretTooShort", func(t *testing.T) {
+		secret := PairingSecret("short") // Only 5 bytes
+		config := NewPairingConfig(PairingModeListener, secret)
+
+		err := config.Validate()
+		assert.ErrorIs(t, err, ErrInvalidSecret)
+	})
+
+	t.Run("SecretTooLong", func(t *testing.T) {
+		secret := make(PairingSecret, 200) // 200 bytes - too long
+		config := NewPairingConfig(PairingModeListener, secret)
+
+		err := config.Validate()
+		assert.ErrorIs(t, err, ErrInvalidSecret)
+	})
+
+	t.Run("SecretLength17Invalid", func(t *testing.T) {
+		secret := PairingSecret("0123456789abcdefg") // 17 bytes
+		config := NewPairingConfig(PairingModeListener, secret)
+
+		err := config.Validate()
+		assert.ErrorIs(t, err, ErrInvalidSecret)
+	})
+
+	t.Run("InvalidConnectionTiming", func(t *testing.T) {
+		secret := PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
+		config := &PairingConfig{
+			Mode:   PairingModeListener,
+			Secret: secret,
+		}
+
+		err := config.Validate()
+		assert.Nil(t, err)
+	})
+
+	t.Run("EmptySecretWithPairingMode", func(t *testing.T) {
+		// Empty secret with pairing mode should be valid (will be configured later)
+		config := &PairingConfig{
+			Mode:   PairingModeListener,
+			Secret: nil,
+		}
+
+		err := config.Validate()
+		assert.NoError(t, err)
+	})
+}
+
+func TestNewPairingConfig(t *testing.T) {
+	// TDD Test: NewPairingConfig should create valid configuration
+
+	secret := PairingSecret(mustHexToBytes("0123456789ABCDEF0123456789ABCDEF"))
+	mode := PairingModeBoth
+
+	config := NewPairingConfig(mode, secret)
+
+	// Test core configuration is set correctly
+	assert.Equal(t, mode, config.Mode)
+	assert.Equal(t, secret, config.Secret)
+}
+
+// mustHexToBytes converts hex string to bytes, panicking on error
+func mustHexToBytes(hexStr string) []byte {
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		panic(fmt.Sprintf("invalid hex string: %s", hexStr))
+	}
+	return bytes
+}

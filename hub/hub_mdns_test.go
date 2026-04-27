@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -11,12 +12,450 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func TestReportMdnsEntries(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        "SKI1",
+			Identifier: "ID1",
+			Path:       "/ws",
+			Register:   true,
+			Brand:      "BrandA",
+			Type:       "TypeA",
+			Model:      "ModelA",
+			Serial:     "SerialA",
+			Categories: []api.DeviceCategoryType{api.DeviceCategoryTypeEMobility},
+			Host:       "host1.local",
+			Port:       1234,
+			Addresses:  []net.IP{net.ParseIP("192.168.1.2")},
+		},
+		"service2": {
+			Name:       "Service 2",
+			Ski:        "SKI2",
+			Identifier: "ID2",
+			Path:       "/ws",
+			Register:   false,
+			Brand:      "BrandB",
+			Type:       "TypeB",
+			Model:      "ModelB",
+			Serial:     "SerialB",
+			Categories: []api.DeviceCategoryType{api.DeviceCategoryTypeHVAC},
+			Host:       "host2.local",
+			Port:       5678,
+			Addresses:  []net.IP{net.ParseIP("192.168.1.3")},
+		},
+	}
+
+	// Create mock HubReader using the official mock
+	mockHubReader := mocks.NewHubReaderInterface(t)
+
+	// Set up expectation for VisibleRemoteMdnsServicesUpdated call
+	var receivedEntries []api.RemoteMdnsService
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).
+		RunAndReturn(func(entries []api.RemoteMdnsService) {
+			receivedEntries = entries
+		}).
+		Once()
+
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Verify the mock expectations
+	mockHubReader.AssertExpectations(t)
+
+	if len(receivedEntries) != 2 {
+		t.Errorf("Expected 2 remote services, got %d", len(receivedEntries))
+	}
+
+	for _, entry := range receivedEntries {
+		if entry.Name == "Service 1" {
+			if entry.Ski != "SKI1" || entry.Brand != "BrandA" {
+				t.Errorf("Service 1 fields do not match")
+			}
+		}
+		if entry.Name == "Service 2" {
+			if entry.Ski != "SKI2" || entry.Brand != "BrandB" {
+				t.Errorf("Service 2 fields do not match")
+			}
+		}
+	}
+}
+
+func TestReportMdnsEntries_WithConnectedService(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	// Add a connected service
+	ski := "SKI1"
+	mockConnection := mocks.NewShipConnectionInterface(t)
+	hub.connections[ski] = mockConnection
+
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   true,
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Since the service is already connected, coordinateConnectionInitations should not be called
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_WithUnpairedService(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	ski := "SKI1"
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
+	service.SetTrusted(false) // Not paired
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   true,
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Since the service is not paired, coordinateConnectionInitations should not be called
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_WithTrustedServiceAndIPv4(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	// Set up mock to expect AnnounceMdnsEntry call when checkAutoReannounce is triggered
+	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
+	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
+
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	ski := "0123456789abcdef0123456789abcdefffffffff"
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
+	service.SetTrusted(true)                                            // Paired
+	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
+	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued) // Queued for connection
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	originalIP := net.ParseIP("192.168.1.2")
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   false, // Will be set to service auto-accept
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Verify that the IPv4 address was patched
+	expectedIP := net.ParseIP("192.168.1.100")
+	if !entries["service1"].Addresses[0].Equal(expectedIP) {
+		t.Errorf("Expected IP address to be patched to %v, got %v", expectedIP, entries["service1"].Addresses[0])
+	}
+
+	// Verify that auto-accept was set
+	if service.AutoAccept() != false {
+		t.Errorf("Expected auto-accept to be set to false, got %t", service.AutoAccept())
+	}
+
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_ShipIDCheck_Valid(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	// Set up mock to expect AnnounceMdnsEntry call when checkAutoReannounce is triggered
+	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
+	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
+
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	// Step 1
+	ski := "0123456789abcdef0123456789abcdefffffffff"
+	shipId := "ID1"
+	fingerprint := "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service, err := api.NewServiceDetails("", fingerprint, shipId)
+	assert.NoError(t, err)
+	service.SetTrusted(true)                                            // Paired
+	service.SetIPv4("192.168.1.100")                                    // Set IPv4 address
+	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued) // Queued for connection
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	originalIP := net.ParseIP("192.168.1.2")
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now that it has the SKI
+	if service.SKI() != ski {
+		t.Errorf("Expected ski %s trusted and amended to the trust.. Got %s", ski, service.SKI())
+	}
+
+	// Step 2: try again with existing SKI but mDNS reports a different value
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	ski2 := "0123456789abcdef0123456789abcde000000000"
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski2,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service did not look for our SHIP ID and overwritten our previous SKI
+	if service.SKI() != ski || service.SKI() == ski2 {
+		t.Errorf("Expected ski not to be overwritten to the trust..")
+	}
+
+	// Step 3: invalidate SKI check
+	service.SetSKI("")
+	ski = "SKI1"
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 4: invalidate/no Fingerprint check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	fingerprint = "fp"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 5: no Ship ID check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	shipId = ""
+	service.SetShipID(shipId)
+	fingerprint = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	// Step 6: another Ship ID in mDNS check
+	service.SetSKI("")
+	ski = "0123456789abcdef0123456789abcdefffffffff"
+	shipId = "ID1"
+	shipId2 := "ID2"
+	service.SetShipID(shipId)
+	fingerprint = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	service.SetFingerprint(fingerprint)
+	entries = map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: shipId2,
+			Register:   false,
+			Addresses:  []net.IP{originalIP},
+		},
+	}
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.ReportMdnsEntries(entries, true)
+
+	// Assert the service now is untouched
+	if len(service.SKI()) != 0 {
+		t.Errorf("Expected ski to be empty.. Got ski %s", ski)
+	}
+
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_WithNonPairedTrustedService(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
+	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
+
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	ski := "SKI1"
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
+	service.SetTrusted(true)                                               // Trusted but not paired through IsRemoteServiceForSKIPaired
+	service.ConnectionStateDetail().SetState(api.ConnectionStateCompleted) // Not queued
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Service 1",
+			Ski:        ski,
+			Identifier: "ID1",
+			Register:   true,
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Should not proceed to coordinateConnectionInitations due to the condition check
+	mockHubReader.AssertExpectations(t)
+}
+
+func TestReportMdnsEntries_WithUnknownService(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	hub := &Hub{
+		connections:              make(map[string]api.ShipConnectionInterface),
+		remoteServices:           make([]*api.ServiceDetails, 0),
+		connectionAttemptCounter: make(map[string]int),
+		connectionAttemptRunning: make(map[string]bool),
+		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		mdns:                     mockMdns,
+	}
+
+	// Don't add any services to remoteServices, so ServiceForIdentifier will return nil
+	entries := map[string]*api.MdnsEntry{
+		"service1": {
+			Name:       "Unknown Service",
+			Ski:        "UNKNOWN_SKI",
+			Identifier: "ID1",
+			Register:   true,
+		},
+	}
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
+	hub.hubReader = mockHubReader
+
+	hub.ReportMdnsEntries(entries, true)
+
+	// Since ServiceForIdentifier returns nil, should skip to next entry
+	mockHubReader.AssertExpectations(t)
+}
+
 // Test mDNS cleanup functionality when services disappear
 func TestReportMdnsEntries_CleanupRemovedEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
 	hub := &Hub{
 		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make(map[string]*api.ServiceDetails, 0),
+		remoteServices:           make([]*api.ServiceDetails, 0),
 		connectionAttemptCounter: make(map[string]int),
 		connectionAttemptRunning: make(map[string]bool),
 		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
@@ -28,7 +467,7 @@ func TestReportMdnsEntries_CleanupRemovedEntries(t *testing.T) {
 	}
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
-	mockHubReader.EXPECT().VisibleRemoteServicesUpdated(mock.AnythingOfType("[]api.RemoteService")).Times(3)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Times(3)
 	hub.hubReader = mockHubReader
 
 	// Step 1: Report initial entries with two services
@@ -85,7 +524,7 @@ func TestReportMdnsEntries_CleanupWithNewEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
 	hub := &Hub{
 		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make(map[string]*api.ServiceDetails, 0),
+		remoteServices:           make([]*api.ServiceDetails, 0),
 		connectionAttemptCounter: make(map[string]int),
 		connectionAttemptRunning: make(map[string]bool),
 		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
@@ -97,7 +536,7 @@ func TestReportMdnsEntries_CleanupWithNewEntries(t *testing.T) {
 	}
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
-	mockHubReader.EXPECT().VisibleRemoteServicesUpdated(mock.AnythingOfType("[]api.RemoteService")).Times(2)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Times(2)
 	hub.hubReader = mockHubReader
 
 	// Initial state: service1 and service2
@@ -131,7 +570,7 @@ func TestReportMdnsEntries_CleanupWithNoPreviousEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
 	hub := &Hub{
 		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make(map[string]*api.ServiceDetails, 0),
+		remoteServices:           make([]*api.ServiceDetails, 0),
 		connectionAttemptCounter: make(map[string]int),
 		connectionAttemptRunning: make(map[string]bool),
 		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
@@ -143,7 +582,7 @@ func TestReportMdnsEntries_CleanupWithNoPreviousEntries(t *testing.T) {
 	}
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
-	mockHubReader.EXPECT().VisibleRemoteServicesUpdated(mock.AnythingOfType("[]api.RemoteService")).Once()
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
 	hub.hubReader = mockHubReader
 
 	// Add some connection state that shouldn't be affected (since no previous entries)
