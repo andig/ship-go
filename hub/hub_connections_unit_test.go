@@ -506,6 +506,10 @@ func TestPrepareConnectionInitiationBasics(t *testing.T) {
 		ski := "retry-after-not-paired-abort"
 		entry := &api.MdnsEntry{}
 
+		// Register the service as untrusted so prepareConnectionInitation reaches the pairing check.
+		unpairedService, _ := api.NewServiceDetails(ski, "", "")
+		hub.addService(unpairedService)
+
 		hub.muxConAttempt.Lock()
 		hub.connectionAttemptCounter[ski] = 0
 		hub.muxConAttempt.Unlock()
@@ -529,6 +533,8 @@ func TestPrepareConnectionInitiationBasics(t *testing.T) {
 
 		ski := "retry-after-already-connected-abort"
 		entry := &api.MdnsEntry{}
+		trustedService, _ := api.NewServiceDetails(ski, "", "")
+		hub.addService(trustedService)
 		hub.ServiceForIdentifier(ski, "").SetTrusted(true)
 
 		hub.muxConAttempt.Lock()
@@ -619,6 +625,8 @@ func TestRegisterConnectionCancelsPendingDelayAndAllowsFutureRetry(t *testing.T)
 	delete(hub.connections, ski)
 	hub.muxCon.Unlock()
 
+	trustedService, _ := api.NewServiceDetails(ski, "", "")
+	hub.addService(trustedService)
 	hub.ServiceForIdentifier(ski, "").SetTrusted(true)
 	hub.coordinateConnectionInitations(ski, entry)
 
