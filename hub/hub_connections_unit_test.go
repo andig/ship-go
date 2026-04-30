@@ -499,6 +499,65 @@ func TestPrepareConnectionInitiationBasics(t *testing.T) {
 		// Attempt running should be cleared
 		assert.False(t, hub.isConnectionAttemptRunning(ski))
 	})
+
+	t.Run("not_paired_abort_allows_future_retry", func(t *testing.T) {
+		hub := setupTestHubForTimer(t)
+
+		ski := "retry-after-not-paired-abort"
+		entry := &api.MdnsEntry{}
+
+		hub.muxConAttempt.Lock()
+		hub.connectionAttemptCounter[ski] = 0
+		hub.muxConAttempt.Unlock()
+		hub.setConnectionAttemptRunning(ski, true)
+
+		// The service is unpaired by default, so preparation aborts on the pairing check.
+		hub.prepareConnectionInitation(ski, 0, entry)
+
+		assert.False(t, hub.isConnectionAttemptRunning(ski), "aborted preparation must clear the running marker")
+
+		hub.ServiceForSKI(ski).SetTrusted(true)
+		hub.coordinateConnectionInitations(ski, entry)
+
+		afterCounter, exists := hub.getCurrentConnectionAttemptCounter(ski)
+		assert.True(t, exists, "connection attempt counter should not have been cleared")
+		assert.Equal(t, 1, afterCounter, "Another connection should be allowed to be initiated after previously aborting on the pairing check")
+	})
+
+	t.Run("already_connected_abort_allows_future_retry", func(t *testing.T) {
+		hub := setupTestHubForTimer(t)
+
+		ski := "retry-after-already-connected-abort"
+		entry := &api.MdnsEntry{}
+		hub.ServiceForSKI(ski).SetTrusted(true)
+
+		hub.muxConAttempt.Lock()
+		hub.connectionAttemptCounter[ski] = 0
+		hub.muxConAttempt.Unlock()
+		hub.setConnectionAttemptRunning(ski, true)
+
+		// An incoming connection wins the race before the connection delay timer fires.
+		existingConn := mocks.NewShipConnectionInterface(t)
+		existingConn.EXPECT().RemoteSKI().Return(ski).Maybe()
+		hub.muxCon.Lock()
+		hub.connections[ski] = existingConn
+		hub.muxCon.Unlock()
+
+		// Connection delay timer fires and prepareConnectionInitiation runs
+		hub.prepareConnectionInitation(ski, 0, entry)
+
+		assert.False(t, hub.isConnectionAttemptRunning(ski), "already-connected abort must clear the running marker")
+
+		hub.muxCon.Lock()
+		delete(hub.connections, ski)
+		hub.muxCon.Unlock()
+
+		hub.coordinateConnectionInitations(ski, entry)
+
+		afterCounter, exists := hub.getCurrentConnectionAttemptCounter(ski)
+		assert.True(t, exists, "connection attempt counter should not have been cleared")
+		assert.Equal(t, 1, afterCounter, "the retry counter should advance for the new attempt")
+	})
 }
 
 // TestCancelConnectionDelayTimer tests timer cancellation
@@ -529,6 +588,43 @@ func TestCancelConnectionDelayTimer(t *testing.T) {
 	_, exists := hub.connectionDelayTimers[ski]
 	hub.muxTimers.RUnlock()
 	assert.False(t, exists, "timer should be removed")
+}
+
+func TestRegisterConnectionCancelsPendingDelayAndAllowsFutureRetry(t *testing.T) {
+	hub := setupTestHubForTimer(t)
+
+	ski := "retry-after-delay-cancelled-by-connection"
+	entry := &api.MdnsEntry{}
+
+	hub.muxConAttempt.Lock()
+	hub.connectionAttemptCounter[ski] = 0
+	hub.muxConAttempt.Unlock()
+	hub.setConnectionAttemptRunning(ski, true)
+
+	timer := newConnectionDelayTimer(time.Hour, func() {})
+	hub.storeConnectionDelayTimer(ski, timer)
+
+	// Registering a connection cancels the connection delay timer
+	conn := mocks.NewShipConnectionInterface(t)
+	conn.EXPECT().RemoteSKI().Return(ski).Maybe()
+	hub.registerConnection(conn)
+
+	assert.False(t, hub.isConnectionAttemptRunning(ski), "cancelling the pending delay must clear the running marker")
+	hub.muxTimers.RLock()
+	_, timerExists := hub.connectionDelayTimers[ski]
+	hub.muxTimers.RUnlock()
+	assert.False(t, timerExists, "the pending delay timer should be removed when the connection is registered")
+
+	hub.muxCon.Lock()
+	delete(hub.connections, ski)
+	hub.muxCon.Unlock()
+
+	hub.ServiceForSKI(ski).SetTrusted(true)
+	hub.coordinateConnectionInitations(ski, entry)
+
+	afterCounter, exists := hub.getCurrentConnectionAttemptCounter(ski)
+	assert.True(t, exists, "connection attempt counter should not have been cleared")
+	assert.Equal(t, 1, afterCounter, "the retry counter should advance for the follow-up attempt")
 }
 
 // TestConnectionDelayTimerStop tests timer Stop method

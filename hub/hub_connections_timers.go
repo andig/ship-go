@@ -60,7 +60,11 @@ func (h *Hub) cancelConnectionDelayTimer(ski string) {
 	defer h.muxTimers.Unlock()
 
 	if timer, ok := h.connectionDelayTimers[ski]; ok {
-		timer.Stop()
+		canceled := timer.Stop()
+		// If Stop returned true the callback won’t run so we reset the flag here; if Stop returned false the in-flight callback’s defer will reset it
+		if canceled {
+			h.setConnectionAttemptRunning(ski, false)
+		}
 		delete(h.connectionDelayTimers, ski)
 	}
 }
