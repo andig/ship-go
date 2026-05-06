@@ -251,10 +251,10 @@ func (h *Hub) initializePairingServiceWithConfig(config *api.PairingConfig) erro
 	}
 
 	// Create ring buffer history provider from persistence interface
-	// Use default ring buffer size of 100 entries (SHIP spec minimum is 10)
+	// Use default ring buffer size of 10 entries (SHIP spec minimum is 10)
 	var historyProvider *pairing.RingBufferHistoryProvider
 	if h.ringBufferPersistence != nil {
-		ringBufferProvider, err := pairing.NewRingBufferHistoryProvider(100, h.ringBufferPersistence)
+		ringBufferProvider, err := pairing.NewRingBufferHistoryProvider(10, h.ringBufferPersistence)
 		if err != nil {
 			return fmt.Errorf("failed to create ring buffer history provider: %w", err)
 		}
