@@ -145,18 +145,22 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ski = util.NormalizeSKI(ski)
 	logging.Log().Debug("incoming connection request from", ski)
 
-	// Check if the remote service is paired
-	service := h.ServiceForIdentifier(ski, fingerprint)
-	if service == nil {
-		// Create new service if not found at all
-		service, _ = api.NewServiceDetails(ski, fingerprint, "")
-		h.addService(service)
-	} else if service.SKI() != ski && service.Fingerprint() == fingerprint {
-		// Update the service with the actual SKI from the connection
-		service.SetSKI(ski)
-	} else if service.SKI() == ski && service.Fingerprint() == "" {
-		// Update fingerprint if it was empty (e.g., from SKI-only registration)
-		service.SetFingerprint(fingerprint)
+	// Build a candidate from what the TLS handshake just gave us and merge
+	// it into the registry. This single call handles all four cases:
+	// new entry, SKI-on-existing-fingerprint-only entry, fingerprint-on-
+	// existing-SKI-only entry, and exact match.
+	candidate, candErr := api.NewServiceDetails(ski, fingerprint, "")
+	if candErr != nil {
+		logging.Log().Error("incoming connection: invalid identifiers", "ski", ski, "error", candErr)
+		h.safeClose(conn, "rejected connection")
+		return
+	}
+	service, mergeErr := h.mergeOrAddService(candidate)
+	if mergeErr != nil {
+		logging.Log().Error("incoming connection rejected: identifier conflict",
+			"ski", ski, "fingerprint", fingerprint, "error", mergeErr)
+		h.safeClose(conn, "identifier conflict")
+		return
 	}
 
 	connectionStateDetail := service.ConnectionStateDetail()

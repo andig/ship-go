@@ -186,6 +186,15 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 	if remoteService.Fingerprint() == "" && validationResult.RemoteFingerprint != "" {
 		remoteService.SetFingerprint(validationResult.RemoteFingerprint)
 	}
+	// Now that the cert has revealed the remote SKI and fingerprint, fold
+	// any other registry entry that matches by these identifiers — this
+	// prevents an orphan untrusted entry from shadowing the trusted one.
+	if merged, mergeErr := h.mergeOrAddService(remoteService); mergeErr == nil {
+		remoteService = merged
+	} else {
+		logging.Log().Error("outgoing connection: identifier conflict during merge",
+			"ski", remoteService.SKI(), "fingerprint", remoteService.Fingerprint(), "error", mergeErr)
+	}
 
 	// Check for double connections
 	if !h.keepThisConnection(conn, false, remoteService) {

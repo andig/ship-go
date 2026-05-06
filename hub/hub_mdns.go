@@ -61,6 +61,15 @@ func (h *Hub) ReportMdnsEntries(entries map[string]*api.MdnsEntry, newEntries bo
 			// Fingerprint is valid, add the found SKI in our trust,
 			// given that the fingerprint will be validated on handshake process
 			service.SetSKI(entry.Ski)
+			// Fold any other entry that now matches by the discovered SKI
+			// (typically an untrusted SKI+FP entry from a prior rejected
+			// incoming connection).
+			if merged, err := h.mergeOrAddService(service); err == nil {
+				service = merged
+			} else {
+				logging.Log().Error("mDNS: identifier conflict during merge",
+					"ski", entry.Ski, "shipID", entry.Identifier, "error", err)
+			}
 		}
 
 		service.SetAutoAccept(entry.Register)

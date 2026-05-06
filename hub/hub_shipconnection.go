@@ -66,18 +66,24 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 
 // report the ship ID provided during the handshake
 func (h *Hub) ReportServiceShipID(ski string, shipID string) {
-	// Update registry with discovered ShipID if it was empty
 	service := h.ServiceForIdentifier(ski, "")
 	if service == nil {
 		return
 	}
 	if service.ShipID() == "" {
 		service.SetShipID(shipID)
+		// The new ShipID may match a separate ShipID-only entry created
+		// earlier (e.g. by RegisterRemoteService with no SKI yet). Merge
+		// to fold them so SKI-keyed lookups stop missing the trust state.
+		if merged, err := h.mergeOrAddService(service); err == nil {
+			service = merged
+		} else {
+			logging.Log().Error("ReportServiceShipID: identifier conflict during merge",
+				"ski", ski, "shipID", shipID, "error", err)
+		}
 	}
 
-	// Get ServiceIdentity for callbacks
 	connectedIdentity := service.ToServiceIdentity()
-
 	h.hubReader.ServiceUpdated(connectedIdentity)
 }
 
