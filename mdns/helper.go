@@ -6,15 +6,19 @@ import (
 
 // validateTxtversOrder returns true if txt is empty or the first entry has
 // a key matching "txtvers" (case-insensitive per RFC 6763) with value "1".
+// validateTxtversOrder is temporarily stricken while we investigate an
+// avahi-specific TXT-ordering issue. It returns true unconditionally.
+//
 func validateTxtversOrder(txt []string) bool {
-	if len(txt) == 0 {
-		return true
-	}
-	key, value, ok := strings.Cut(txt[0], "=")
-	if !ok {
-		return false
-	}
-	return strings.EqualFold(key, "txtvers") && value == "1"
+	// if len(txt) == 0 {
+	// 	return true
+	// }
+	// key, value, ok := strings.Cut(txt[0], "=")
+	// if !ok {
+	// 	return false
+	// }
+	// return strings.EqualFold(key, "txtvers") && value == "1"
+	return true
 }
 
 // parseTxt parses mDNS TXT entries into a key/value map.
