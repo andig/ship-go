@@ -64,14 +64,14 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ActiveDiscove
 				// Simulate SMGW announcing pairing for heat pump
 				pairingElements := map[string]string{
 					"txtvers":    "1",
-					"parType":    "fpSha256",
-					"forId":      "HeatPump-X",
-					"forPar":     "heatpump-par-123",
-					"trustId":    "SMGW-Pro",
-					"trustPar":   "smgw-par-456",
-					"trustCurve": "secp256r1",
+					"partype":    "fpSha256",
+					"forid":      "HeatPump-X",
+					"forpar":     "heatpump-par-123",
+					"trustid":    "SMGW-Pro",
+					"trustpar":   "smgw-par-456",
+					"trustcurve": "secp256r1",
 					"type":       "addCu",
-					"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+					"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 					"alg":        "hmacSha256",
 					"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 				}
@@ -141,28 +141,28 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_FiltersBySKI(
 	// Simulate multiple pairing announcements
 	pairingForOther := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "OtherDevice",
-		"forPar":     "other-par-xyz", // Different PAR
-		"trustId":    "SMGW-1",
-		"trustPar":   "smgw-par-1",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "OtherDevice",
+		"forpar":     "other-par-xyz", // Different PAR
+		"trustid":    "SMGW-1",
+		"trustpar":   "smgw-par-1",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	pairingForUs := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "HeatPump",
-		"forPar":     heatPumpPAR, // Our PAR
-		"trustId":    "SMGW-2",
-		"trustPar":   "smgw-par-2",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "HeatPump",
+		"forpar":     heatPumpPAR, // Our PAR
+		"trustid":    "SMGW-2",
+		"trustpar":   "smgw-par-2",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -207,14 +207,14 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_HandlesRemova
 
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "Device",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "SMGW",
-		"trustPar":   "smgw-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "Device",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "SMGW",
+		"trustpar":   "smgw-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -266,14 +266,14 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ReplaceCallba
 	// Trigger a discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "Device",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "SMGW",
-		"trustPar":   "smgw-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "Device",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "SMGW",
+		"trustpar":   "smgw-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -386,14 +386,14 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScen
 	// First, an offer for a different device
 	otherOffer := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "WashingMachine-Model-Z",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "SMGW-Pro-2000",
-		"trustPar":   smgwPAR,
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "WashingMachine-Model-Z",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "SMGW-Pro-2000",
+		"trustpar":   smgwPAR,
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -403,14 +403,14 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScen
 	// Then, an offer for our heat pump
 	ourOffer := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "HeatPump-Model-X",
-		"forPar":     heatPumpPAR,
-		"trustId":    "SMGW-Pro-2000",
-		"trustPar":   smgwPAR,
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "HeatPump-Model-X",
+		"forpar":     heatPumpPAR,
+		"trustid":    "SMGW-Pro-2000",
+		"trustpar":   smgwPAR,
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}

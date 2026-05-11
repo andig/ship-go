@@ -956,12 +956,18 @@ func (m *MdnsManager) processMdnsEntry(elements map[string]string, serviceName, 
 	}
 }
 
-// processShipPairingMdnsEntry processes a _shippairing._tcp mDNS entry
+// processShipPairingMdnsEntry processes a _shippairing._tcp mDNS entry.
+//
+// elements is expected to use RFC 6763 canonical (lowercase) key names —
+// parseTxt folds keys to lowercase before the manager sees them. SHIP Pairing
+// TS §5.4 documents the keys in camelCase as wire convention; since RFC 6763
+// makes key comparison case-insensitive, mapItems retains the spec spelling
+// for audit clarity while lookups go through the lowercased form.
 func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, serviceName string, remove bool) {
 	// check for mandatory text elements
 	mapItems := []string{"txtvers", "parType", "forId", "forPar", "trustId", "trustPar", "trustCurve", "type", "trustNonce", "alg", "digest"}
 	for _, item := range mapItems {
-		if _, ok := elements[item]; !ok {
+		if _, ok := elements[strings.ToLower(item)]; !ok {
 			logging.Log().Debug("mdns: pairing - missing mandatory element", item, serviceName)
 			return
 		}
@@ -974,14 +980,14 @@ func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, se
 		return
 	}
 
-	parType := elements["parType"]
-	forId := elements["forId"]
-	forPar := elements["forPar"]
-	trustId := elements["trustId"]
-	trustPar := elements["trustPar"]
-	trustCurve := elements["trustCurve"]
+	parType := elements["partype"]
+	forId := elements["forid"]
+	forPar := elements["forpar"]
+	trustId := elements["trustid"]
+	trustPar := elements["trustpar"]
+	trustCurve := elements["trustcurve"]
 	elType := elements["type"]
-	trustNonce := elements["trustNonce"]
+	trustNonce := elements["trustnonce"]
 	alg := elements["alg"]
 	digest := elements["digest"]
 
@@ -1495,26 +1501,18 @@ func (m *MdnsManager) convertPairingTXTToArray(txtRecord *api.ShipPairingTXT) []
 	return txtArray
 }
 
-// SimulatePairingDiscovery simulates the discovery of a pairing service for testing
-// This method is intended for integration tests to simulate mDNS discovery
+// SimulatePairingDiscovery simulates the discovery of a pairing service for testing.
+// Routes the TXT record through the same wire-encode → parseTxt pipeline that
+// production providers use, so the simulator delivers identically normalized
+// input to processShipPairingMdnsEntry.
 func (m *MdnsManager) SimulatePairingDiscovery(txtRecord *api.ShipPairingTXT) {
 	if txtRecord == nil {
 		return
 	}
 
-	// Create elements map from TXT record
-	elements := map[string]string{
-		"txtvers":    txtRecord.TxtVers,
-		"parType":    txtRecord.ParType,
-		"forId":      txtRecord.ForId,
-		"forPar":     txtRecord.ForPar,
-		"trustId":    txtRecord.TrustId,
-		"trustPar":   txtRecord.TrustPar,
-		"trustCurve": txtRecord.TrustCurve,
-		"type":       txtRecord.Type,
-		"trustNonce": txtRecord.TrustNonce,
-		"alg":        txtRecord.Alg,
-		"digest":     txtRecord.Digest,
+	elements, ok := parseTxt(m.convertPairingTXTToArray(txtRecord))
+	if !ok {
+		return
 	}
 
 	// Process the simulated discovery

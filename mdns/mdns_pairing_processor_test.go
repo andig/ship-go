@@ -39,14 +39,14 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 	// Prepare valid pairing TXT elements
 	elements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "target-device-id",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "source-device-id",
-		"trustPar":   "source-device-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "source-device-id",
+		"trustpar":   "source-device-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -77,9 +77,9 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 func (s *PairingProcessorSuite) Test_processPairingEntry_MissingMandatoryField() {
 	// Missing txtvers (mandatory field)
 	elements := map[string]string{
-		"parType":    "fpSha256",
-		"forId":   "target-device-id",
-		"trustId": "source-device-id",
+		"partype":    "fpSha256",
+		"forid":   "target-device-id",
+		"trustid": "source-device-id",
 	}
 
 	remove := false
@@ -98,9 +98,9 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_InvalidTxtVers() {
 	// Invalid txtvers value (must be "1")
 	elements := map[string]string{
 		"txtvers": "2",
-		"parType":    "fpSha256",
-		"forId":   "target-device-id",
-		"trustId": "source-device-id",
+		"partype":    "fpSha256",
+		"forid":   "target-device-id",
+		"trustid": "source-device-id",
 	}
 
 	remove := false
@@ -119,9 +119,9 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_NoCallback() {
 	// Valid pairing data but no callback registered
 	elements := map[string]string{
 		"txtvers": "1",
-		"parType":    "fpSha256",
-		"forId":   "target-device-id",
-		"trustId": "source-device-id",
+		"partype":    "fpSha256",
+		"forid":   "target-device-id",
+		"trustid": "source-device-id",
 	}
 
 	remove := false
@@ -139,14 +139,14 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_RemoveEntry() {
 	// Test removal of pairing entry
 	elements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "target-device-id",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "source-device-id",
-		"trustPar":   "source-device-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "source-device-id",
+		"trustpar":   "source-device-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -184,14 +184,14 @@ func (s *PairingProcessorSuite) Test_RegisterPairingCallback() {
 	// Process valid pairing entry
 	elements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "target-device-id",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "source-device-id",
-		"trustPar":   "source-device-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "source-device-id",
+		"trustpar":   "source-device-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -217,14 +217,14 @@ func (s *PairingProcessorSuite) Test_UnregisterPairingCallback() {
 	// Process valid pairing entry
 	elements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "target-device-id",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "source-device-id",
-		"trustPar":   "source-device-par",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "source-device-id",
+		"trustpar":   "source-device-par",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
