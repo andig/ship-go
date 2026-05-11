@@ -160,7 +160,7 @@ func (a *AvahiSuite) Test_Avahi() {
 		Aprotocol: -1,
 		Flags:     0,
 		Address:   "127.0.0.1",
-		Txt:       [][]byte{[]byte("ski=133742247331")},
+		Txt:       [][]byte{[]byte("txtvers=1"), []byte("ski=133742247331")},
 	}
 	result := getServiceUniqueKey(testService)
 	assert.Equal(a.T(), "TestService-_ship._tcp-local-0-1", result)
@@ -181,6 +181,71 @@ func (a *AvahiSuite) Test_Avahi() {
 	// Two ServiceBrowserFree calls - one for each browser
 	a.avahiMock.EXPECT().ServiceBrowserFree(a.serviceBrowserMock).Return().Times(2)
 	a.sut.Shutdown()
+}
+
+func (a *AvahiSuite) Test_processAddedService_TxtversOrder() {
+	var cbCalled bool
+	cb := func(elements map[string]string, name, host, service string, addresses []net.IP, port int, remove bool) {
+		cbCalled = true
+	}
+
+	base := avahi.Service{
+		Interface: 1,
+		Protocol:  0,
+		Name:      "TestService",
+		Type:      "_ship._tcp",
+		Domain:    "local",
+		Host:      "localhost",
+		Address:   "127.0.0.1",
+	}
+
+	// Positive: txtvers=1 leads the record — service is processed normally
+	cbCalled = false
+	svc := base
+	svc.Txt = [][]byte{[]byte("txtvers=1"), []byte("ski=abc123")}
+	err := a.sut.processAddedService(svc, cb)
+	assert.Nil(a.T(), err)
+	assert.True(a.T(), cbCalled)
+
+	// Positive: txtvers=1 is the only TXT entry — valid leading position
+	cbCalled = false
+	svc = base
+	svc.Txt = [][]byte{[]byte("txtvers=1")}
+	err = a.sut.processAddedService(svc, cb)
+	assert.Nil(a.T(), err)
+	assert.True(a.T(), cbCalled)
+
+	// Positive: empty TXT — no ordering constraint applies
+	cbCalled = false
+	svc = base
+	svc.Txt = nil
+	err = a.sut.processAddedService(svc, cb)
+	assert.Nil(a.T(), err)
+	assert.True(a.T(), cbCalled)
+
+	// Negative: txtvers=1 is present but not first — service is rejected
+	cbCalled = false
+	svc = base
+	svc.Txt = [][]byte{[]byte("ski=abc123"), []byte("txtvers=1")}
+	err = a.sut.processAddedService(svc, cb)
+	assert.NotNil(a.T(), err)
+	assert.False(a.T(), cbCalled)
+
+	// Negative: txtvers=1 is absent entirely — service is rejected
+	cbCalled = false
+	svc = base
+	svc.Txt = [][]byte{[]byte("ski=abc123"), []byte("id=test")}
+	err = a.sut.processAddedService(svc, cb)
+	assert.NotNil(a.T(), err)
+	assert.False(a.T(), cbCalled)
+
+	// Negative: wrong version value leads — service is rejected
+	cbCalled = false
+	svc = base
+	svc.Txt = [][]byte{[]byte("txtvers=2"), []byte("ski=abc123")}
+	err = a.sut.processAddedService(svc, cb)
+	assert.NotNil(a.T(), err)
+	assert.False(a.T(), cbCalled)
 }
 
 func (a *AvahiSuite) Test_Shutdown() {

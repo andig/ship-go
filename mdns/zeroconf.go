@@ -268,6 +268,11 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 				continue
 			}
 
+			if !validateTxtversOrder(service.Text) {
+				logging.Log().Errorf("invalid order - must lead with txtvers: %v", service.Text)
+				continue
+			}
+
 			addresses := service.AddrIPv4
 			cb(elements, service.Instance, service.HostName, service.Service, addresses, service.Port, true)
 
@@ -281,6 +286,11 @@ func (z *ZeroconfProvider) chanListener(pairingMode api.PairingMode, cb api.Mdns
 
 			if !uniqueKeys {
 				logging.Log().Errorf("duplicate keys in txt record: %v", service.Text)
+				continue
+			}
+
+			if !validateTxtversOrder(service.Text) {
+				logging.Log().Errorf("invalid order - must lead with txtvers: %v", service.Text)
 				continue
 			}
 

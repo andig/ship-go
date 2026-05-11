@@ -472,6 +472,10 @@ func (a *AvahiProvider) processAddedService(service avahi.Service, cb api.MdnsRe
 		return fmt.Errorf("duplicate keys in txt record: %v", txt)
 	}
 
+	if !validateTxtversOrder(txt) {
+		return fmt.Errorf("invalid order - must lead with txtvers: %v", txt)
+	}
+
 	logging.Log().Trace("mdns: avahi - process add service:", service.Name, service.Type, service.Domain, service.Host, service.Address, service.Port, elements)
 
 	address := net.ParseIP(service.Address)
