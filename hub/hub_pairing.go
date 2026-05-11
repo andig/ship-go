@@ -514,28 +514,25 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 		return
 	}
 
-	// Check for existing trusted AddCu device BEFORE updating any services
-	// Only replace if this is a NEW device (different fingerprint) replacing an existing one
+	// Pairing spec §4.3.1.b.i and §10.3: a successful addCu-request authorises
+	// devA to untrust the prior devZ and trust the new one. The transfer is
+	// mandatory whenever the prior devZ's fingerprint differs from the new
+	// request — independent of whether the SHIP ID is the same (legitimate
+	// cert rotation under a stable SHIP ID per SHIP §12.2.1) or different
+	// (operator replaced the device).
 	var replacedService *api.ServiceDetails = h.GetTrustedAddCuDevice()
 
 	if replacedService != nil && replacedService.ShipID() != "" && replacedService.Fingerprint() != remoteFingerprint {
-		// Check if replacement timer is running
 		if h.addCuReplacementTracker.IsInReplacementWindow() {
-			// Timer is running - ignore this announcement (will be processed when timer expires via mDNS polling)
+			// §4.3.1.a 15-minute window still active - defer; the announcement
+			// will be re-evaluated when the timer expires.
 			logging.Log().Debug("Ignoring pairing announcement during replacement window",
 				"existingShipID", replacedService.ShipID(), "newShipID", remoteShipID)
 			return
 		}
-		// Only replace if the fingerprints are different (different devices)
-		if replacedService.ShipID() != remoteShipID {
-			replacedService.SetTrusted(false)
-			h.removeService(replacedService.SKI(), replacedService.Fingerprint())
-			// Stop any active replacement timer for the old device
-			h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
-		} else {
-			// Same fingerprint with different ShipID - don't replace, just update ShipID below
-			replacedService = nil
-		}
+		replacedService.SetTrusted(false)
+		h.removeService(replacedService.SKI(), replacedService.Fingerprint())
+		h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
 	}
 
 	// Build a candidate carrying everything we just learned and let the
