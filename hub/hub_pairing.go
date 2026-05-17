@@ -347,13 +347,10 @@ func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 		return fmt.Errorf("target SHIP ID cannot be empty")
 	}
 
-	if target.SKI == "" {
-		return fmt.Errorf("target SKI cannot be empty")
-	}
-
 	if len(target.Secret) == 0 {
 		return fmt.Errorf("target secret cannot be empty")
 	}
+
 	if !api.PairingSecret(target.Secret).IsValidLength() {
 		return api.ErrInvalidSecret
 	}

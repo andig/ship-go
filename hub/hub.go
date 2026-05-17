@@ -819,9 +819,9 @@ func (h *Hub) callDeviceAutoTrustRemovedCallback(service *api.ServiceDetails, re
 
 // New ServiceIdentity-based interface implementations
 
-// serviceFor is an internal helper to find ServiceDetails by ServiceIdentity (lowercase = private)
+// serviceFor is an internal helper to find ServiceDetails by ServiceIdentity
 func (h *Hub) serviceFor(identity api.ServiceIdentity) *api.ServiceDetails {
-	return h.ServiceForIdentifier(identity.SKI, identity.Fingerprint)
+	return h.ServiceForIdentifierFull(identity.SKI, identity.Fingerprint, identity.ShipID)
 }
 
 // ServiceForIdentifier finds a service by SKI and/or fingerprint.
