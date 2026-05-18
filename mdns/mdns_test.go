@@ -1849,14 +1849,14 @@ func (s *MdnsSuite) Test_ProcessShipPairingMdnsEntry_InvalidTxtvers() {
 	// Create elements map with all mandatory fields but invalid txtvers
 	elements := map[string]string{
 		"txtvers":    "2", // Invalid version (not "1")
-		"parType":    "fpSha256",
-		"forId":      "forDeviceId",
-		"forPar":     "forDeviceFingerprint",
-		"trustId":    "trustDeviceId",
-		"trustPar":   "trustDeviceFingerprint",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "forDeviceId",
+		"forpar":     "forDeviceFingerprint",
+		"trustid":    "trustDeviceId",
+		"trustpar":   "trustDeviceFingerprint",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "0123456789abcdef0123456789abcdef",
+		"trustnonce": "0123456789abcdef0123456789abcdef",
 		"alg":        "hmacSha256",
 		"digest":     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}

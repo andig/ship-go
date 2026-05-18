@@ -115,24 +115,27 @@ func (h *Hub) checkHasStarted() bool {
 
 // Pair a remote service using ServiceIdentity
 func (h *Hub) RegisterRemoteService(identity api.ServiceIdentity) {
-	// Direct field extraction - cleaner than conversion function
 	if identity.IsZero() {
 		return
 	}
 
-	service, err := api.NewServiceDetails(identity.SKI, identity.Fingerprint, identity.ShipID)
+	candidate, err := api.NewServiceDetails(identity.SKI, identity.Fingerprint, identity.ShipID)
 	if err != nil {
 		logging.Log().Error("RegisterRemoteService: invalid identity", "error", err)
 		return
 	}
-	service.SetPairingType(identity.PairingType)
-	service.SetIPv4(identity.IPv4)
+	candidate.SetPairingType(identity.PairingType)
+	candidate.SetIPv4(identity.IPv4)
+	// Mark trust on the candidate so the merge propagates it onto the
+	// canonical entry — including the case where a previously-untrusted
+	// entry created from an incoming connection already exists.
+	candidate.SetTrusted(true)
 
-	if success := h.addService(service); !success {
+	service, err := h.mergeOrAddService(candidate)
+	if err != nil {
+		logging.Log().Error("RegisterRemoteService: identifier conflict with existing entry", "error", err)
 		return
 	}
-
-	service.SetTrusted(true)
 
 	// if the hub has not started, simply add it
 	if !h.checkHasStarted() {
@@ -251,10 +254,10 @@ func (h *Hub) initializePairingServiceWithConfig(config *api.PairingConfig) erro
 	}
 
 	// Create ring buffer history provider from persistence interface
-	// Use default ring buffer size of 100 entries (SHIP spec minimum is 10)
+	// Use default ring buffer size of 10 entries (SHIP spec minimum is 10)
 	var historyProvider *pairing.RingBufferHistoryProvider
 	if h.ringBufferPersistence != nil {
-		ringBufferProvider, err := pairing.NewRingBufferHistoryProvider(100, h.ringBufferPersistence)
+		ringBufferProvider, err := pairing.NewRingBufferHistoryProvider(10, h.ringBufferPersistence)
 		if err != nil {
 			return fmt.Errorf("failed to create ring buffer history provider: %w", err)
 		}
@@ -344,13 +347,10 @@ func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 		return fmt.Errorf("target SHIP ID cannot be empty")
 	}
 
-	if target.SKI == "" {
-		return fmt.Errorf("target SKI cannot be empty")
-	}
-
 	if len(target.Secret) == 0 {
 		return fmt.Errorf("target secret cannot be empty")
 	}
+
 	if !api.PairingSecret(target.Secret).IsValidLength() {
 		return api.ErrInvalidSecret
 	}
@@ -511,60 +511,47 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 		return
 	}
 
-	// Check for existing trusted AddCu device BEFORE updating any services
-	// Only replace if this is a NEW device (different fingerprint) replacing an existing one
+	// Pairing spec §4.3.1.b.i and §10.3: a successful addCu-request authorises
+	// devA to untrust the prior devZ and trust the new one. The transfer is
+	// mandatory whenever the prior devZ's fingerprint differs from the new
+	// request — independent of whether the SHIP ID is the same (legitimate
+	// cert rotation under a stable SHIP ID per SHIP §12.2.1) or different
+	// (operator replaced the device).
 	var replacedService *api.ServiceDetails = h.GetTrustedAddCuDevice()
 
 	if replacedService != nil && replacedService.ShipID() != "" && replacedService.Fingerprint() != remoteFingerprint {
-		// Check if replacement timer is running
 		if h.addCuReplacementTracker.IsInReplacementWindow() {
-			// Timer is running - ignore this announcement (will be processed when timer expires via mDNS polling)
+			// §4.3.1.a 15-minute window still active - defer; the announcement
+			// will be re-evaluated when the timer expires.
 			logging.Log().Debug("Ignoring pairing announcement during replacement window",
 				"existingShipID", replacedService.ShipID(), "newShipID", remoteShipID)
 			return
 		}
-		// Only replace if the fingerprints are different (different devices)
-		if replacedService.ShipID() != remoteShipID {
-			replacedService.SetTrusted(false)
-			h.removeService(replacedService.SKI(), replacedService.Fingerprint())
-			// Stop any active replacement timer for the old device
-			h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
-		} else {
-			// Same fingerprint with different ShipID - don't replace, just update ShipID below
-			replacedService = nil
-		}
+		replacedService.SetTrusted(false)
+		h.removeService(replacedService.SKI(), replacedService.Fingerprint())
+		h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
 	}
 
-	// Create service from pairing data and
-	// establish trust immediately per SHIP spec section 4.2 step 3
-	service := h.ServiceForIdentifier("", remoteFingerprint)
-	if service == nil {
-		// This should be the normal case
-		var err error
-		service, err = api.NewServiceDetails("", remoteFingerprint, remoteShipID)
-		if err != nil {
-			logging.Log().Error("OnPairingSuccess: invalid identifiers", "shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
-			return
-		}
-		if success := h.addService(service); !success {
-			logging.Log().Error("Failed to add service during pairing success - ShipID:", remoteShipID, "Fingerprint:", remoteFingerprint)
-			return
-		}
-	} else {
-		// Handle existing service with same fingerprint
-		existingShipID := service.ShipID()
-		if existingShipID != "" && existingShipID != remoteShipID {
-			// Security check: same fingerprint with different ShipID from trusted service
-			// This could be an impersonation attempt - reject the pairing
-			logging.Log().Error("Security violation: fingerprint already associated with different ShipID", "existingShipID", existingShipID, "newShipID", remoteShipID, "fingerprint", remoteFingerprint)
-			return
-		}
-		// Safe to update ShipID (either empty or same as new one)
-		service.SetShipID(remoteShipID)
+	// Build a candidate carrying everything we just learned and let the
+	// merge fold it into any existing entry that matches by fingerprint OR
+	// by ShipID (e.g. an untrusted SKI+FP entry left behind by an earlier
+	// rejected incoming connection).
+	candidate, err := api.NewServiceDetails("", remoteFingerprint, remoteShipID)
+	if err != nil {
+		logging.Log().Error("OnPairingSuccess: invalid identifiers", "shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
+		return
 	}
+	candidate.SetTrusted(true)
+	candidate.SetPairingType(api.PairingTypeAddCu)
 
-	service.SetTrusted(true)
-	service.SetPairingType(api.PairingTypeAddCu)
+	service, err := h.mergeOrAddService(candidate)
+	if err != nil {
+		// Hard conflict: e.g. fingerprint already associated with a
+		// different ShipID — possible impersonation attempt.
+		logging.Log().Error("OnPairingSuccess rejected: identifier conflict",
+			"shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
+		return
+	}
 
 	logging.Log().Trace("Pairing success - trust established immediately - ShipID:", remoteShipID, "Fingerprint:", remoteFingerprint)
 

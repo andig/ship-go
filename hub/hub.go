@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -377,62 +379,176 @@ func (h *Hub) Shutdown() {
 	h.muxStarted.Unlock()
 }
 
-// ServiceFor returns the service details for a ServiceIdentity
+// ServiceFor returns the service details for a ServiceIdentity.
+// If multiple entries match (which should not happen post-merge but is
+// possible during persistence rehydration), the trusted entry wins.
 func (h *Hub) ServiceFor(identity api.ServiceIdentity) *api.ServiceDetails {
-	ski := util.NormalizeSKI(identity.SKI)
+	return h.ServiceForIdentifierFull(identity.SKI, identity.Fingerprint, identity.ShipID)
+}
+
+// mergeOrAddService folds a candidate ServiceDetails into the registry.
+//
+// Behaviour:
+//   - finds every existing entry whose SKI, fingerprint, or ShipID matches
+//     the candidate (fingerprint comparison is case-insensitive),
+//   - if any matched entry has an identifier that directly contradicts the
+//     candidate or another matched entry on a non-empty value, returns an
+//     error and leaves the registry unchanged,
+//   - otherwise picks one canonical entry (a trusted match if any, else the
+//     first match, else the candidate itself), copies missing identifiers /
+//     trust / pairing-type / IPv4 from the candidate and from every absorbed
+//     entry into it, removes the absorbed entries, and returns the canonical.
+//
+// All mutation happens under muxReg so concurrent lookups never observe a
+// split state.
+func (h *Hub) mergeOrAddService(candidate *api.ServiceDetails) (*api.ServiceDetails, error) {
+	if candidate == nil {
+		return nil, fmt.Errorf("candidate is nil")
+	}
+
+	candSKI := candidate.SKI()
+	candFP := strings.ToUpper(candidate.Fingerprint())
+	candShip := candidate.ShipID()
+
+	if candSKI == "" && candFP == "" && candShip == "" {
+		return nil, fmt.Errorf("candidate has no identifiers")
+	}
 
 	h.muxReg.Lock()
 	defer h.muxReg.Unlock()
 
-	for _, service := range h.remoteServices {
-		// Check if any provided identifier contradicts existing ones
-		skiConflict := (ski != "" && service.SKI() != "" && service.SKI() != ski)
-		fpConflict := (identity.Fingerprint != "" && service.Fingerprint() != "" && service.Fingerprint() != identity.Fingerprint)
+	type match struct {
+		idx int
+		svc *api.ServiceDetails
+	}
 
-		if skiConflict || fpConflict {
-			continue // This represents a different device
-		}
+	var matches []match
+	for i, s := range h.remoteServices {
+		sSKI := s.SKI()
+		sFP := strings.ToUpper(s.Fingerprint())
+		sShip := s.ShipID()
 
-		// At least one identifier must match
-		skiMatch := (ski != "" && service.SKI() == ski)
-		fpMatch := (identity.Fingerprint != "" && service.Fingerprint() == identity.Fingerprint)
-		shipIDMatch := (identity.ShipID != "" && service.ShipID() == identity.ShipID)
-
-		if skiMatch || fpMatch || shipIDMatch {
-			return service
+		if (candSKI != "" && sSKI == candSKI) ||
+			(candFP != "" && sFP == candFP) ||
+			(candShip != "" && sShip == candShip) {
+			matches = append(matches, match{i, s})
 		}
 	}
 
-	return nil
+	// Conflict check: aggregate the identifiers across candidate and all
+	// matches; any disagreement on a non-empty field is a hard conflict.
+	checkConflict := func(label, a, b string) error {
+		if a != "" && b != "" && !strings.EqualFold(a, b) {
+			return fmt.Errorf("identifier conflict on %s: %q vs %q", label, a, b)
+		}
+		return nil
+	}
+
+	mergedSKI, mergedFP, mergedShip := candSKI, candFP, candShip
+	for _, m := range matches {
+		mSKI, mFP, mShip := m.svc.SKI(), strings.ToUpper(m.svc.Fingerprint()), m.svc.ShipID()
+		if err := checkConflict("SKI", mergedSKI, mSKI); err != nil {
+			return nil, err
+		}
+		if err := checkConflict("fingerprint", mergedFP, mFP); err != nil {
+			return nil, err
+		}
+		if err := checkConflict("shipID", mergedShip, mShip); err != nil {
+			return nil, err
+		}
+		if mergedSKI == "" {
+			mergedSKI = mSKI
+		}
+		if mergedFP == "" {
+			mergedFP = mFP
+		}
+		if mergedShip == "" {
+			mergedShip = mShip
+		}
+	}
+
+	if len(matches) == 0 {
+		h.remoteServices = append(h.remoteServices, candidate)
+		return candidate, nil
+	}
+
+	// Canonical: prefer a trusted match.
+	canonical := matches[0].svc
+	for _, m := range matches {
+		if m.svc.Trusted() {
+			canonical = m.svc
+			break
+		}
+	}
+
+	// Fold the candidate's data into the canonical entry.
+	foldInto(canonical, candidate)
+	// Fold every other match into the canonical entry.
+	for _, m := range matches {
+		if m.svc != canonical {
+			foldInto(canonical, m.svc)
+		}
+	}
+
+	// Drop absorbed entries from the slice (descending index order).
+	absorbed := make([]int, 0, len(matches))
+	for _, m := range matches {
+		if m.svc != canonical {
+			absorbed = append(absorbed, m.idx)
+		}
+	}
+	if len(absorbed) > 0 {
+		sort.Sort(sort.Reverse(sort.IntSlice(absorbed)))
+		for _, i := range absorbed {
+			h.remoteServices = append(h.remoteServices[:i], h.remoteServices[i+1:]...)
+		}
+		logging.Log().Debug("trust store: merged duplicate service entries",
+			"absorbed", len(absorbed), "ski", canonical.SKI(),
+			"shipID", canonical.ShipID(), "fingerprint", canonical.Fingerprint())
+	}
+
+	return canonical, nil
 }
 
-// add a new remote service
-//
-// Parameters:
-//   - service: The ServiceDetails instance representing the remote service to add.
-//
-// Returns:
-//   - true if the service was added successfully, false otherwise.
-//
-// Note: The service must have an SKI or fingerprint that is not yet added
+// foldInto copies non-empty identifier / trust state from src into dst,
+// without overwriting non-empty values already present on dst. Pre-condition:
+// callers have verified the two entries are mergeable (no field conflict).
+func foldInto(dst, src *api.ServiceDetails) {
+	if dst == src || src == nil {
+		return
+	}
+	if dst.SKI() == "" && src.SKI() != "" {
+		dst.SetSKI(src.SKI())
+	}
+	if dst.Fingerprint() == "" && src.Fingerprint() != "" {
+		dst.SetFingerprint(src.Fingerprint())
+	}
+	if dst.ShipID() == "" && src.ShipID() != "" {
+		dst.SetShipID(src.ShipID())
+	}
+	if dst.IPv4() == "" && src.IPv4() != "" {
+		dst.SetIPv4(src.IPv4())
+	}
+	if src.Trusted() {
+		dst.SetTrusted(true)
+	}
+	if src.AutoAccept() {
+		dst.SetAutoAccept(true)
+	}
+	if src.PairingType() == api.PairingTypeAddCu {
+		dst.SetPairingType(api.PairingTypeAddCu)
+	}
+}
+
+// addService preserves the historical bool-returning API by delegating to
+// mergeOrAddService. Returns false only when the candidate is nil or its
+// identifiers conflict with an existing entry.
 func (h *Hub) addService(service *api.ServiceDetails) bool {
 	if service == nil {
 		return false
 	}
-
-	h.muxReg.Lock()
-	defer h.muxReg.Unlock()
-
-	// Check if the service is already registered
-	for _, s := range h.remoteServices {
-		if (service.SKI() != "" && s.SKI() == service.SKI()) ||
-			(service.Fingerprint() != "" && s.Fingerprint() == service.Fingerprint()) {
-			return false
-		}
-	}
-
-	h.remoteServices = append(h.remoteServices, service)
-	return true
+	_, err := h.mergeOrAddService(service)
+	return err == nil
 }
 
 // remove a service from remote services
@@ -703,35 +819,57 @@ func (h *Hub) callDeviceAutoTrustRemovedCallback(service *api.ServiceDetails, re
 
 // New ServiceIdentity-based interface implementations
 
-// serviceFor is an internal helper to find ServiceDetails by ServiceIdentity (lowercase = private)
+// serviceFor is an internal helper to find ServiceDetails by ServiceIdentity
 func (h *Hub) serviceFor(identity api.ServiceIdentity) *api.ServiceDetails {
-	return h.ServiceForIdentifier(identity.SKI, identity.Fingerprint)
+	return h.ServiceForIdentifierFull(identity.SKI, identity.Fingerprint, identity.ShipID)
 }
 
-// ServiceForIdentifier finds a service by SKI and fingerprint (internal method)
+// ServiceForIdentifier finds a service by SKI and/or fingerprint.
+// If multiple entries match (split-state from a previous bug or persistence
+// rehydration), the trusted entry wins.
 func (h *Hub) ServiceForIdentifier(ski, fingerprint string) *api.ServiceDetails {
+	return h.ServiceForIdentifierFull(ski, fingerprint, "")
+}
+
+// ServiceForIdentifierFull finds a service by any of SKI, fingerprint, or
+// ShipID. Match semantics: an entry matches when at least one provided
+// identifier equals the entry's value and no provided identifier directly
+// contradicts the entry. When multiple entries match, a trusted match is
+// preferred so a stale untrusted duplicate cannot shadow a trusted one.
+func (h *Hub) ServiceForIdentifierFull(ski, fingerprint, shipID string) *api.ServiceDetails {
 	ski = util.NormalizeSKI(ski)
+	fpUpper := strings.ToUpper(fingerprint)
 
 	h.muxReg.Lock()
 	defer h.muxReg.Unlock()
 
+	var firstMatch *api.ServiceDetails
 	for _, service := range h.remoteServices {
-		// Check if any provided identifier contradicts existing ones
-		skiConflict := (ski != "" && service.SKI() != "" && service.SKI() != ski)
-		fpConflict := (fingerprint != "" && service.Fingerprint() != "" && service.Fingerprint() != fingerprint)
+		sSKI := service.SKI()
+		sFP := strings.ToUpper(service.Fingerprint())
+		sShip := service.ShipID()
 
-		if skiConflict || fpConflict {
-			continue // This represents a different device
+		skiConflict := (ski != "" && sSKI != "" && sSKI != ski)
+		fpConflict := (fpUpper != "" && sFP != "" && sFP != fpUpper)
+		shipConflict := (shipID != "" && sShip != "" && sShip != shipID)
+		if skiConflict || fpConflict || shipConflict {
+			continue
 		}
 
-		// At least one identifier must match
-		skiMatch := (ski != "" && service.SKI() == ski)
-		fpMatch := (fingerprint != "" && service.Fingerprint() == fingerprint)
+		skiMatch := (ski != "" && sSKI == ski)
+		fpMatch := (fpUpper != "" && sFP == fpUpper)
+		shipMatch := (shipID != "" && sShip == shipID)
+		if !(skiMatch || fpMatch || shipMatch) {
+			continue
+		}
 
-		if skiMatch || fpMatch {
+		if service.Trusted() {
 			return service
+		}
+		if firstMatch == nil {
+			firstMatch = service
 		}
 	}
 
-	return nil
+	return firstMatch
 }

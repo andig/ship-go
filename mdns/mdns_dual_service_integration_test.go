@@ -106,14 +106,14 @@ func (s *DualServiceIntegrationSuite) Test_DualServiceDiscovery_SimultaneousServ
 	// 2. Simulate pairing service discovery
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "heatpump-id",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "smgw-id",
-		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "heatpump-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "smgw-id",
+		"trustpar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -234,14 +234,14 @@ func (s *DualServiceIntegrationSuite) Test_ServiceTypeRouting_Isolation() {
 	// Test 2: Pairing service should NOT create SHIP entry
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "test",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "test",
-		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "test",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "test",
+		"trustpar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -340,14 +340,14 @@ func (s *DualServiceIntegrationSuite) Test_RemovalHandling_BothServiceTypes() {
 	// Test pairing service removal (though we don't store them, callback should still be invoked)
 	pairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",
-		"forId":      "test",
-		"forPar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
-		"trustId":    "test",
-		"trustPar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
-		"trustCurve": "secp256r1",
+		"partype":    "fpSha256",
+		"forid":      "test",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "test",
+		"trustpar":   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 		"alg":        "hmacSha256",
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
@@ -418,14 +418,14 @@ func (s *DualServiceIntegrationSuite) Test_ListenerMode_HeatPumpScenario() {
 	// SMGW announces pairing service targeting the heat pump
 	smgwPairingElements := map[string]string{
 		"txtvers":    "1",
-		"parType":    "fpSha256",                   // Type 1 pairing
-		"forId":      "HeatPump-Model-X",    // Target device ID
-		"forPar":     heatPumpSKI,           // Target heat pump's SKI
-		"trustId":    "SMGW-Pro-2000",       // SMGW's ID
-		"trustPar":   smgwSKI,               // SMGW's SKI
-		"trustCurve": "secp256r1",               // Elliptic curve
+		"partype":    "fpSha256",                   // Type 1 pairing
+		"forid":      "HeatPump-Model-X",    // Target device ID
+		"forpar":     heatPumpSKI,           // Target heat pump's SKI
+		"trustid":    "SMGW-Pro-2000",       // SMGW's ID
+		"trustpar":   smgwSKI,               // SMGW's SKI
+		"trustcurve": "secp256r1",               // Elliptic curve
 		"type":       "addCu",               // Pairing offer
-		"trustNonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4", // Random nonce
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4", // Random nonce
 		"alg":        "hmacSha256",               // HMAC algorithm
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25", // Computed digest
 	}

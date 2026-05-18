@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/enbility/ship-go/api"
+	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/model"
 )
 
@@ -46,11 +47,6 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 	disconnectedIdentity := remoteService.ToServiceIdentity()
 	h.hubReader.RemoteServiceDisconnected(disconnectedIdentity)
 
-	// Cancel any announcement lifetime timer for this device
-	if remoteService.ShipID() != "" {
-		h.announcementLifetimeTracker.CancelLifetimeTimer(remoteService.ShipID())
-	}
-
 	// Cancel any announcement lifetime timer for this device for devZ
 	if h.pairingService != nil && h.pairingConfig != nil && (h.pairingConfig.Mode == api.PairingModeAnnouncer || h.pairingConfig.Mode == api.PairingModeBoth) {
 		if remoteService.ShipID() != "" {
@@ -58,23 +54,36 @@ func (h *Hub) HandleConnectionClosed(connection api.ShipConnectionInterface, han
 		}
 	}
 
+	// Start replacement tracker for AddCu devices
+	if remoteService.PairingType() == api.PairingTypeAddCu && remoteService.ShipID() != "" {
+		shipID := remoteService.ShipID()
+		logging.Log().Trace("starting AddCu replacement timer", "shipID", shipID, "ski", remoteService.SKI(), "timeout", "15 minutes")
+		h.addCuReplacementTracker.StartTimer(shipID, h.handleAddCuReplacementTimeout)
+	}
+
 	h.checkAutoReannounce()
 }
 
 // report the ship ID provided during the handshake
 func (h *Hub) ReportServiceShipID(ski string, shipID string) {
-	// Update registry with discovered ShipID if it was empty
 	service := h.ServiceForIdentifier(ski, "")
 	if service == nil {
 		return
 	}
 	if service.ShipID() == "" {
 		service.SetShipID(shipID)
+		// The new ShipID may match a separate ShipID-only entry created
+		// earlier (e.g. by RegisterRemoteService with no SKI yet). Merge
+		// to fold them so SKI-keyed lookups stop missing the trust state.
+		if merged, err := h.mergeOrAddService(service); err == nil {
+			service = merged
+		} else {
+			logging.Log().Error("ReportServiceShipID: identifier conflict during merge",
+				"ski", ski, "shipID", shipID, "error", err)
+		}
 	}
 
-	// Get ServiceIdentity for callbacks
 	connectedIdentity := service.ToServiceIdentity()
-
 	h.hubReader.ServiceUpdated(connectedIdentity)
 }
 
