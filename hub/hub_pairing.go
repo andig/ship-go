@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -157,10 +158,22 @@ func (h *Hub) RegisterRemoteService(identity api.ServiceIdentity) {
 // Remove pairing using ServiceIdentity
 func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 	if service := h.serviceFor(identity); service != nil {
+		// The stored entry carries the authoritative pairing type — the
+		// caller-supplied identity may have been built from the SKI alone.
+		isAddCu := service.PairingType() == api.PairingTypeAddCu
+		shipID := service.ShipID()
 		service.SetTrusted(false)
 		service.ConnectionStateDetail().SetState(api.ConnectionStateNone)
 		h.hubReader.ServicePairingDetailUpdate(identity, service.ConnectionStateDetail())
 		h.removeService(identity.SKI, identity.Fingerprint)
+		if isAddCu {
+			// Pairing spec §4.3 item 2.b / §10.4 *3: user removal of the
+			// trusted addCu device reactivates processing of addCu-requests
+			// immediately — the 15-minute wait applies only to the automatic
+			// reactivation path, so any pending replacement timer is obsolete.
+			h.addCuReplacementTracker.StopTimer(shipID)
+			h.reactivatePairingListener("Control Unit removed")
+		}
 	}
 
 	h.removeConnectionAttemptCounter(identity.SKI)
@@ -320,6 +333,9 @@ func (h *Hub) enablePairingListener(config *api.PairingConfig) error {
 	ctx := h.pairingCtx // Use Hub's context for proper lifecycle management
 
 	if err := listener.StartListening(ctx, config.Secret); err != nil {
+		if errors.Is(err, api.ErrListenerAlreadyActive) {
+			return nil
+		}
 		return fmt.Errorf("failed to start autonomous listener: %w", err)
 	}
 
