@@ -165,7 +165,7 @@ func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 		service.SetTrusted(false)
 		service.ConnectionStateDetail().SetState(api.ConnectionStateNone)
 		h.hubReader.ServicePairingDetailUpdate(identity, service.ConnectionStateDetail())
-		h.removeService(identity.SKI, identity.Fingerprint)
+		h.removeServiceEntry(service)
 		if isAddCu {
 			// Pairing spec §4.3 item 2.b / §10.4 *3: user removal of the
 			// trusted addCu device reactivates processing of addCu-requests
@@ -173,6 +173,7 @@ func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 			// reactivation path, so any pending replacement timer is obsolete.
 			h.addCuReplacementTracker.StopTimer(shipID)
 			h.reactivatePairingListener("Control Unit removed")
+			h.processPendingPairingEntries()
 		}
 	}
 
@@ -544,7 +545,7 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 			return
 		}
 		replacedService.SetTrusted(false)
-		h.removeService(replacedService.SKI(), replacedService.Fingerprint())
+		h.removeServiceEntry(replacedService)
 		h.addCuReplacementTracker.StopTimer(replacedService.ShipID())
 	}
 
@@ -582,6 +583,15 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 		// Convert ServiceDetails to ServiceIdentity - thread-safe, no Copy() needed
 		identity := service.ToServiceIdentity()
 		pairingReader.ServiceAutoTrusted(identity)
+	}
+
+	// The accepted request may have been withdrawn right after evaluation or
+	// replayed from the mDNS cache, so a SHIP connection may never
+	// materialise. Arm the replacement timer so the spec §4.3 1.a recovery
+	// window runs from trust establishment; it is stopped as soon as the
+	// SHIP connection completes.
+	if conn := h.connectionForService(service); conn == nil {
+		h.addCuReplacementTracker.StartTimer(remoteShipID, h.handleAddCuReplacementTimeout)
 	}
 
 	// we have to initiate checking the mds records again, to trigger a connection

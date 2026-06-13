@@ -77,7 +77,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 func (s *PairingProcessorSuite) Test_processPairingEntry_MissingMandatoryField() {
 	// Missing txtvers (mandatory field)
 	elements := map[string]string{
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -98,7 +98,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_InvalidTxtVers() {
 	// Invalid txtvers value (must be "1")
 	elements := map[string]string{
 		"txtvers": "2",
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -119,7 +119,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_NoCallback() {
 	// Valid pairing data but no callback registered
 	elements := map[string]string{
 		"txtvers": "1",
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -168,6 +168,39 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_RemoveEntry() {
 
 	// For removals, callback should be NOT called (new behavior)
 	assert.Nil(s.T(), s.receivedPairingData)
+}
+
+func (s *PairingProcessorSuite) Test_processPairingEntry_RemoveWithoutTxtElements() {
+	// mDNS remove events frequently carry no TXT data: avahi only echoes
+	// elements it stored at add time (lookup can miss across interfaces or
+	// daemon restarts) and zeroconf reports incomplete records. A remove is
+	// identified by its service instance name alone — it must clear the
+	// cached entry even when the TXT elements are absent, otherwise the
+	// withdrawn request is replayed to the listener on the next reactivation.
+	elements := map[string]string{
+		"txtvers":    "1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "sps-test-2",
+		"trustpar":   "78C29464504DCF78E79E9D4F0B9C542A311C99EEE782E27C05ABF9B9A8BD15FE",
+		"trustcurve": "secp256r1",
+		"type":       "addCu",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
+	}
+
+	s.sut.processShipPairingMdnsEntry(elements, "servicename", false)
+	_, exists := s.sut.pairingMdnsEntry("servicename")
+	s.Require().True(exists, "Entry should be cached after add")
+
+	// Remove arrives without TXT data
+	s.sut.processShipPairingMdnsEntry(map[string]string{}, "servicename", true)
+
+	_, exists = s.sut.pairingMdnsEntry("servicename")
+	assert.False(s.T(), exists,
+		"A remove event must clear the cached entry even without TXT elements")
 }
 
 func (s *PairingProcessorSuite) Test_RegisterPairingCallback() {
