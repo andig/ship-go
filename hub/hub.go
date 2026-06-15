@@ -46,6 +46,9 @@ type Hub struct {
 	connectionAttemptCounter map[string]int
 	connectionAttemptRunning map[string]bool
 
+	// SKIs with an outgoing dial in flight but not yet registered
+	connectionsInitiating map[string]bool
+
 	port        int
 	certificate tls.Certificate
 
@@ -142,6 +145,7 @@ func NewHub(hubReader api.HubReaderInterface,
 		connections:                 make(map[string]api.ShipConnectionInterface),
 		connectionAttemptCounter:    make(map[string]int),
 		connectionAttemptRunning:    make(map[string]bool),
+		connectionsInitiating:       make(map[string]bool),
 		remoteServices:              make([]*api.ServiceDetails, 0),
 		knownMdnsEntries:            make([]*api.MdnsEntry, 0),
 		connectionDelayTimers:       make(map[string]*connectionDelayTimer),

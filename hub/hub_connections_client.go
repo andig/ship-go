@@ -151,8 +151,29 @@ func (h *Hub) createShipConnection(conn *websocket.Conn, remoteService *api.Serv
 //
 // returns error contains a reason for failing the connection or nil if no further tries should be processed
 func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port, path string) error {
-	if h.isSkiConnected(remoteService.SKI()) {
-		return nil
+	// Atomically skip if this SKI is already connected or a concurrent outgoing
+	// dial is already in flight. registerConnection only marks the SKI connected
+	// after the websocket dial and SHIP handshake, so without an in-flight guard
+	// two concurrent outgoing dials to the same SKI can both pass this check,
+	// both establish, and then tear each other down via keepThisConnection.
+	if ski := remoteService.SKI(); ski != "" {
+		h.muxCon.Lock()
+		if h.connectionsInitiating == nil {
+			h.connectionsInitiating = make(map[string]bool)
+		}
+		_, connected := h.connections[ski]
+		if connected || h.connectionsInitiating[ski] {
+			h.muxCon.Unlock()
+			return nil
+		}
+		h.connectionsInitiating[ski] = true
+		h.muxCon.Unlock()
+
+		defer func() {
+			h.muxCon.Lock()
+			delete(h.connectionsInitiating, ski)
+			h.muxCon.Unlock()
+		}()
 	}
 
 	// Check connection limit before initiating new connection
