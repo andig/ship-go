@@ -161,8 +161,7 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 		if h.connectionsInitiating == nil {
 			h.connectionsInitiating = make(map[string]bool)
 		}
-		_, connected := h.connections[ski]
-		if connected || h.connectionsInitiating[ski] {
+		if _, connected := h.connections[ski]; connected || h.connectionsInitiating[ski] {
 			h.muxCon.Unlock()
 			return nil
 		}
