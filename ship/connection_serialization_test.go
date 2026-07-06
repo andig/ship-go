@@ -144,6 +144,8 @@ func (s *ConnectionSerializationSuite) TestSendSpineData_WriteError() {
 	// Mock write error
 	expectedErr := errors.New("write failed")
 	s.wsDataWriter.EXPECT().WriteMessageToWebsocketConnection(mock.Anything).Return(expectedErr).Once()
+	// a failed write must tear down the connection so the SKI is freed for reconnect
+	s.infoProvider.EXPECT().HandleConnectionClosed(s.sut, false).Return().Once()
 
 	err := s.sut.sendSpineData(spineData)
 	assert.Error(s.T(), err)
