@@ -2,7 +2,6 @@ package hub
 
 import (
 	"net"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,17 +11,23 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestReportMdnsEntries(t *testing.T) {
-	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
+// newMdnsTestHub builds a Hub with the state ReportMdnsEntries touches.
+func newMdnsTestHub(mockMdns api.MdnsInterface) *Hub {
+	return &Hub{
 		connections:              make(map[string]api.ShipConnectionInterface),
 		remoteServices:           make([]*api.ServiceDetails, 0),
 		connectionAttemptCounter: make(map[string]int),
 		connectionsInitiating:    make(map[string]bool),
 		connectionAttemptRunning: make(map[string]bool),
 		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
+		knownMdnsEntries:         make([]*api.MdnsEntry, 0),
 		mdns:                     mockMdns,
 	}
+}
+
+func TestReportMdnsEntries(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	hub := newMdnsTestHub(mockMdns)
 
 	entries := map[string]*api.MdnsEntry{
 		"service1": {
@@ -95,15 +100,7 @@ func TestReportMdnsEntries(t *testing.T) {
 
 func TestReportMdnsEntries_WithConnectedService(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	// Add a connected service
 	ski := "SKI1"
@@ -131,15 +128,7 @@ func TestReportMdnsEntries_WithConnectedService(t *testing.T) {
 
 func TestReportMdnsEntries_WithUnpairedService(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	ski := "SKI1"
 	service, err := api.NewServiceDetails(ski, "", "")
@@ -172,15 +161,7 @@ func TestReportMdnsEntries_WithTrustedServiceAndIPv4(t *testing.T) {
 	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
 	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
 
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	ski := "0123456789abcdef0123456789abcdefffffffff"
 	service, err := api.NewServiceDetails(ski, "", "")
@@ -227,15 +208,7 @@ func TestReportMdnsEntries_ShipIDCheck_Valid(t *testing.T) {
 	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
 	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
 
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	// Step 1
 	ski := "0123456789abcdef0123456789abcdefffffffff"
@@ -389,15 +362,7 @@ func TestReportMdnsEntries_WithNonPairedTrustedService(t *testing.T) {
 	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
 	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
 
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	ski := "SKI1"
 	service, err := api.NewServiceDetails(ski, "", "")
@@ -427,15 +392,7 @@ func TestReportMdnsEntries_WithNonPairedTrustedService(t *testing.T) {
 
 func TestReportMdnsEntries_WithUnknownService(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	// Don't add any services to remoteServices, so ServiceForIdentifier will return nil
 	entries := map[string]*api.MdnsEntry{
@@ -460,19 +417,7 @@ func TestReportMdnsEntries_WithUnknownService(t *testing.T) {
 // Test mDNS cleanup functionality when services disappear
 func TestReportMdnsEntries_CleanupRemovedEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		knownMdnsEntries:         make([]*api.MdnsEntry, 0),
-		muxMdns:                  sync.Mutex{},
-		muxTimers:                sync.RWMutex{},
-		muxConAttempt:            sync.RWMutex{},
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
 	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Times(3)
@@ -530,19 +475,7 @@ func TestReportMdnsEntries_CleanupRemovedEntries(t *testing.T) {
 // Test that cleanup doesn't interfere with normal operation
 func TestReportMdnsEntries_CleanupWithNewEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		knownMdnsEntries:         make([]*api.MdnsEntry, 0),
-		muxMdns:                  sync.Mutex{},
-		muxTimers:                sync.RWMutex{},
-		muxConAttempt:            sync.RWMutex{},
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns)
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
 	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Times(2)
@@ -577,19 +510,7 @@ func TestReportMdnsEntries_CleanupWithNewEntries(t *testing.T) {
 // Test edge case: no previous entries
 func TestReportMdnsEntries_CleanupWithNoPreviousEntries(t *testing.T) {
 	mockMdns := mocks.NewMdnsInterface(t)
-	hub := &Hub{
-		connections:              make(map[string]api.ShipConnectionInterface),
-		remoteServices:           make([]*api.ServiceDetails, 0),
-		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
-		connectionAttemptRunning: make(map[string]bool),
-		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
-		knownMdnsEntries:         make([]*api.MdnsEntry, 0), // No previous entries
-		muxMdns:                  sync.Mutex{},
-		muxTimers:                sync.RWMutex{},
-		muxConAttempt:            sync.RWMutex{},
-		mdns:                     mockMdns,
-	}
+	hub := newMdnsTestHub(mockMdns) // no previous mDNS entries
 
 	mockHubReader := mocks.NewHubReaderInterface(t)
 	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Once()
