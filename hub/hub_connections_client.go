@@ -158,9 +158,6 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 	// both establish, and then tear each other down via keepThisConnection.
 	if ski := remoteService.SKI(); ski != "" {
 		h.muxCon.Lock()
-		if h.connectionsInitiating == nil {
-			h.connectionsInitiating = make(map[string]bool)
-		}
 		if _, connected := h.connections[ski]; connected || h.connectionsInitiating[ski] {
 			h.muxCon.Unlock()
 			return nil
