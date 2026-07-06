@@ -267,3 +267,83 @@ func (s *PairingProcessorSuite) Test_UnregisterPairingCallback() {
 	// Verify callback was NOT called after unregistration
 	assert.False(s.T(), callbackCalled)
 }
+
+/* Re-report and eviction semantics */
+
+// validPairingElements returns a complete, valid TXT element set for tests
+// that exercise cache semantics rather than field validation.
+func validPairingElements() map[string]string {
+	return map[string]string{
+		"txtvers":    "1",
+		"partype":    "fpSha256",
+		"forid":      "target-device-id",
+		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		"trustid":    "source-device-id",
+		"trustpar":   "source-device-par",
+		"trustcurve": "secp256r1",
+		"type":       "addCu",
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		"alg":        "hmacSha256",
+		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
+	}
+}
+
+func (s *PairingProcessorSuite) Test_processPairingEntry_SameNameChangedContent_ReDelivers() {
+	// Pairing spec §4.2 devA rule 2 note / §5.5 option 2: devZ may correct a
+	// request by reusing the same service instance name (e.g. after a missed
+	// goodbye). Changed content must be re-delivered, not treated as a
+	// TTL refresh.
+	callbackCount := 0
+	s.sut.RegisterPairingCallback(func(data *api.ShipPairingTXT) bool {
+		callbackCount++
+		s.receivedPairingData = data
+		return true
+	})
+
+	s.sut.processShipPairingMdnsEntry(validPairingElements(), "corrected-service", false)
+	assert.Equal(s.T(), 1, callbackCount)
+
+	corrected := validPairingElements()
+	corrected["trustnonce"] = "0102030405060708090A0B0C0D0E0F10"
+	corrected["digest"] = "AAAA62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25"
+	s.sut.processShipPairingMdnsEntry(corrected, "corrected-service", false)
+
+	assert.Equal(s.T(), 2, callbackCount, "changed content under a known instance name must be re-delivered")
+	assert.Equal(s.T(), corrected["digest"], s.receivedPairingData.Digest)
+
+	cached, exists := s.sut.pairingMdnsEntry("corrected-service")
+	assert.True(s.T(), exists)
+	assert.Equal(s.T(), corrected["digest"], cached.Digest, "cache must hold the corrected content")
+}
+
+func (s *PairingProcessorSuite) Test_processPairingEntry_SameNameIdenticalContent_Suppressed() {
+	// A byte-identical re-report is TTL-refresh noise and must not be
+	// re-delivered to the callback.
+	callbackCount := 0
+	s.sut.RegisterPairingCallback(func(data *api.ShipPairingTXT) bool {
+		callbackCount++
+		return true
+	})
+
+	s.sut.processShipPairingMdnsEntry(validPairingElements(), "refresh-service", false)
+	s.sut.processShipPairingMdnsEntry(validPairingElements(), "refresh-service", false)
+
+	assert.Equal(s.T(), 1, callbackCount, "identical re-report must stay suppressed")
+}
+
+func (s *PairingProcessorSuite) Test_processPairingEntry_RemoveEvictsOnlyMatchingEntry() {
+	// A goodbye is identified by the service instance name alone and must
+	// evict exactly that entry, leaving other live records untouched.
+	s.sut.RegisterPairingCallback(func(data *api.ShipPairingTXT) bool { return true })
+
+	s.sut.processShipPairingMdnsEntry(validPairingElements(), "device-x", false)
+	s.sut.processShipPairingMdnsEntry(validPairingElements(), "device-y", false)
+
+	// Goodbye events often carry no TXT data
+	s.sut.processShipPairingMdnsEntry(map[string]string{}, "device-x", true)
+
+	_, existsX := s.sut.pairingMdnsEntry("device-x")
+	_, existsY := s.sut.pairingMdnsEntry("device-y")
+	assert.False(s.T(), existsX, "removed entry must be evicted")
+	assert.True(s.T(), existsY, "unrelated live entry must survive the removal")
+}

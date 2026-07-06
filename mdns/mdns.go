@@ -1025,12 +1025,20 @@ func (m *MdnsManager) processShipPairingMdnsEntry(elements map[string]string, se
 		return
 	}
 
-	// Re-reports for a known instance name are ignored; the cache is
-	// invalidated by remove events.
-	if _, exists := m.pairingMdnsEntry(serviceName); exists {
-		return
+	// A re-report of a known instance name with identical content is a TTL
+	// refresh — ignore it. Different content means devZ corrected its request
+	// reusing the same instance name (pairing spec §5.5 option 2), or the
+	// goodbye that should have preceded the new announcement was lost; §4.2
+	// devA rule 2 requires the evaluation to begin again in both cases, so
+	// update the cache and re-deliver.
+	if cached, exists := m.pairingMdnsEntry(serviceName); exists {
+		if *cached == *newEntry {
+			return
+		}
+		logging.Log().Debug("mdns: changed", logString)
+	} else {
+		logging.Log().Debug("mdns: new", logString)
 	}
-	logging.Log().Debug("mdns: new", logString)
 
 	m.setPairingMdnsEntry(serviceName, newEntry)
 

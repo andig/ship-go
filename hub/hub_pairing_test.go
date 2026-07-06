@@ -2835,6 +2835,63 @@ func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_Accepte
 			"otherwise a device that never connects leaves the listener off forever")
 }
 
+func (suite *EnablePairingListenerTestSuite) TestOnPairingSuccess_NoConnection_TimerFiresAndReactivatesListener() {
+	// Pairing spec §4.3 1.a end to end: trust is established but no SHIP
+	// connection ever completes — when the replacement window expires, the
+	// listener must be reactivated so a replacement request can be evaluated.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+	suite.sut.addCuReplacementTracker = NewAddCuReplacementTrackerWithTimeout(30 * time.Millisecond)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	reactivated := make(chan struct{})
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
+		Run(func(mock.Arguments) { close(reactivated) })
+
+	suite.sut.OnPairingSuccess("sps-timer-1", "63F25AF7")
+
+	suite.Require().True(suite.sut.addCuReplacementTracker.IsTracking("sps-timer-1"),
+		"Trust without a SHIP connection must arm the replacement timer")
+
+	select {
+	case <-reactivated:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("replacement timer expiry did not reactivate the pairing listener")
+	}
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("sps-timer-1"),
+		"Expired timer must clear the tracking state")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestOnPairingSuccess_ExistingConnection_DoesNotArmTimer() {
+	// A SHIP connection may already exist when the pairing request is
+	// accepted (connect-before-pair). The §4.3 1.a recovery timer must not
+	// be armed then — if that connection later closes without completing,
+	// HandleConnectionClosed arms the timer instead.
+	service, err := api.NewServiceDetails("connectedski0001", "ABCDEF0123456789", "sps-conn-1")
+	suite.Require().NoError(err)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	mockConn := mocks.NewShipConnectionInterface(suite.T())
+	// Hub shutdown in teardown closes all registered connections
+	mockConn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	suite.sut.muxCon.Lock()
+	suite.sut.connections[service.SKI()] = mockConn
+	suite.sut.muxCon.Unlock()
+
+	suite.sut.OnPairingSuccess("sps-conn-1", "ABCDEF0123456789")
+
+	current := suite.sut.GetTrustedAddCuDevice()
+	suite.Require().NotNil(current, "Accepted request must establish trust")
+	suite.Require().Equal("sps-conn-1", current.ShipID())
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("sps-conn-1"),
+		"Recovery timer must not be armed while a connection object exists for the service")
+}
+
 func (suite *HubPairingCompositionTestSuite) TestSetPairingService() {
 	// Test SetPairingService before hub is started
 	mockPairingService := mocks.NewShipPairingServiceInterface(suite.T())
