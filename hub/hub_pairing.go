@@ -173,7 +173,6 @@ func (h *Hub) UnregisterRemoteService(identity api.ServiceIdentity) {
 			// reactivation path, so any pending replacement timer is obsolete.
 			h.addCuReplacementTracker.StopTimer(shipID)
 			h.reactivatePairingListener("Control Unit removed")
-			h.processPendingPairingEntries()
 		}
 	}
 

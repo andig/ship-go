@@ -1450,7 +1450,9 @@ func (m *MdnsManager) SearchPairingServices(callback func(*api.ShipPairingTXT) b
 	return nil
 }
 
-// RequestPairingEntries triggers an immediate discovery scan for SHIP Pairing Services (implements MdnsPairingInterface)
+// RequestPairingEntries returns a snapshot of the currently-live
+// _shippairing._tcp records from the local browse cache; it performs no
+// network operation (implements MdnsPairingInterface)
 func (m *MdnsManager) RequestPairingEntries() (map[string]*api.ShipPairingTXT, error) {
 	// Ensure the mDNS manager is started
 	if !m.isStarted {

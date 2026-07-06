@@ -1516,6 +1516,8 @@ func (suite *HubPairingQRTestSuite) SetupTest() {
 	suite.mockHubReader = mocks.NewHubReaderInterface(suite.T())
 	suite.mockMdns = mocks.NewMdnsInterface(suite.T())
 	suite.mockPairing = mocks.NewMdnsPairingInterface(suite.T())
+	// A real listener pulls the current record snapshot on StartListening
+	suite.mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Create composite mock that implements both interfaces
 	suite.compositeMdns = &CompositeMdnsMock{
@@ -1771,6 +1773,7 @@ func (suite *QRAnnouncementTestSuite) SetupTest() {
 	// Setup common mock expectations for mDNS pairing operations
 	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().AnnouncePairingService(mock.Anything).Return("test-instance-id", nil).Maybe()
 	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().UnannouncePairingService(mock.AnythingOfType("string")).Return(nil).Maybe()
+	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Setup common mock expectations for mDNS start operation
 	suite.mockMdnsInterface.MdnsInterface.EXPECT().Start(mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -2328,6 +2331,7 @@ func (suite *EnablePairingListenerTestSuite) SetupTest() {
 
 	// Create composite mock for mDNS that supports pairing
 	mockPairing := mocks.NewMdnsPairingInterface(suite.T())
+	mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.compositeMdns = &CompositeMdnsMock{
 		MdnsInterface:        suite.mockMdns,
 		MdnsPairingInterface: mockPairing,
@@ -2552,6 +2556,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_WithRealP
 	// Add more mock expectations for the real pairing service startup
 	mockPairing := mocks.NewMdnsPairingInterface(suite.T())
 	mockPairing.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Maybe()
+	mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Create a new composite mock for this test with the additional expectations
 	compositeMdnsForTest := &CompositeMdnsMock{
@@ -2717,20 +2722,12 @@ func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_AddCuRe
 	suite.sut.activePairingListener = suite.mockListener
 	suite.sut.muxPairingListener.Unlock()
 
-	// An announcement that arrived while the listener was deactivated sits in
-	// the mDNS cache and is never re-delivered — removal must replay it.
-	cachedEntries := map[string]*api.ShipPairingTXT{
-		"pending-announcement": {TxtVers: "1", Type: "addCu"},
-	}
-
+	// Replaying announcements that arrived while the listener was deactivated
+	// is StartListening's own responsibility; the hub only has to reactivate.
 	listenerStarted := false
-	pendingProcessed := false
 	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
 	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
 		Run(func(mock.Arguments) { listenerStarted = true })
-	suite.compositeMdns.MdnsPairingInterface.EXPECT().RequestPairingEntries().Return(cachedEntries, nil).Once()
-	suite.mockListener.EXPECT().ProcessPendingEntries(cachedEntries).Return(nil).Once().
-		Run(func(mock.Arguments) { pendingProcessed = true })
 
 	identity := api.NewServiceIdentity("addcutestski", "", "")
 	suite.Require().Equal(api.PairingTypeDefault, identity.PairingType)
@@ -2739,8 +2736,6 @@ func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_AddCuRe
 
 	assert.True(suite.T(), listenerStarted,
 		"Listener should be reactivated when the trusted addCu device is removed")
-	assert.True(suite.T(), pendingProcessed,
-		"Cached pairing announcements should be re-evaluated after reactivation")
 	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("addcu-ship-id"),
 		"Replacement timer should be stopped when the addCu device is removed")
 }
@@ -2820,16 +2815,11 @@ func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_Accepte
 	suite.sut.activePairingListener = suite.mockListener
 	suite.sut.muxPairingListener.Unlock()
 
-	cachedEntries := map[string]*api.ShipPairingTXT{
-		"sps-test-2-pairing#1": {TxtVers: "1", Type: "addCu", TrustId: "sps-test-2", TrustPar: "63F25AF7"},
-	}
-
 	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
-	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once()
-	suite.compositeMdns.MdnsPairingInterface.EXPECT().RequestPairingEntries().Return(cachedEntries, nil).Once()
-	// The real listener validates the still-announced request and accepts it;
-	// the announcement is withdrawn right after and the device never connects.
-	suite.mockListener.EXPECT().ProcessPendingEntries(cachedEntries).Return(nil).Once().
+	// The real listener replays the still-live mDNS records inside
+	// StartListening, validates the request and accepts it; the announcement
+	// is withdrawn right after and the device never connects.
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
 		Run(func(mock.Arguments) {
 			suite.sut.OnPairingSuccess("sps-test-2", "63F25AF7")
 		})

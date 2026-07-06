@@ -788,41 +788,9 @@ func (h *Hub) handleAddCuReplacementTimeout(expiredShipID string) {
 		return
 	}
 
+	// StartListening evaluates the currently-live pairing records itself, so
+	// reactivation needs no further replay step here.
 	h.reactivatePairingListener("AddCu device replacement timeout")
-
-	h.processPendingPairingEntries()
-}
-
-// processPendingPairingEntries re-evaluates pairing announcements cached by
-// the mDNS layer. The discovery callback fires only once per service instance;
-// an announcement received while the listener was deactivated is dropped and
-// never re-delivered, so every reactivation must replay the cache.
-func (h *Hub) processPendingPairingEntries() {
-	mdnsPairing, ok := h.mdns.(api.MdnsPairingInterface)
-	if !ok {
-		return
-	}
-
-	currentPairingServices, err := mdnsPairing.RequestPairingEntries()
-	if err != nil {
-		logging.Log().Error("Failed to request pairing entries", "error", err)
-		return
-	}
-	if len(currentPairingServices) == 0 {
-		return
-	}
-
-	h.muxPairingListener.RLock()
-	listener := h.activePairingListener
-	h.muxPairingListener.RUnlock()
-
-	if listener == nil {
-		return
-	}
-
-	if err := listener.ProcessPendingEntries(currentPairingServices); err != nil {
-		logging.Log().Error("Failed to process pending pairing entries", "error", err)
-	}
 }
 
 // reactivatePairingListener reactivates the pairing listener when AddCu replacement timeout occurs

@@ -2,7 +2,9 @@ package pairing
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -38,6 +40,8 @@ func TestListenerTestSuite(t *testing.T) {
 func (suite *ListenerTestSuite) SetupTest() {
 	// Setup fresh mocks for each test
 	suite.mockMdns = mocks.NewMdnsPairingInterface(suite.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	suite.mockMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.mockCrypto = mocks.NewPairingCryptoInterface(suite.T())
 	suite.mockHistory = mocks.NewPairingHistoryProviderInterface(suite.T())
 	suite.mockHub = mocks.NewPairingHubInterface(suite.T())
@@ -1203,6 +1207,88 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_ReplayAttack_ShouldDet
 	// Verify listener continues after detecting replay attack
 	status := suite.sut.GetListenerStatus()
 	assert.True(suite.T(), status.Active, "listener should continue after detecting replay attack")
+}
+
+/* StartListening snapshot replay tests */
+
+// These tests build their own mocks instead of using the suite's, because the
+// suite installs an open-ended RequestPairingEntries stub that would shadow
+// per-test expectations.
+
+func (suite *ListenerTestSuite) TestStartListening_EvaluatesCurrentRecords() {
+	// A record that arrived while no listener was active is only reachable
+	// through the snapshot pull — the browse callback for it already fired
+	// and will not fire again. StartListening must evaluate it itself.
+	mockMdns := mocks.NewMdnsPairingInterface(suite.T())
+	mockCrypto := mocks.NewPairingCryptoInterface(suite.T())
+	mockHistory := mocks.NewPairingHistoryProviderInterface(suite.T())
+	mockHub := mocks.NewPairingHubInterface(suite.T())
+	sut := NewPairingListener(mockMdns, mockCrypto, mockHistory, mockHub, suite.localService)
+
+	txtRecord := suite.createValidTestTXTRecord()
+	entries := map[string]*api.ShipPairingTXT{"live-announcement": txtRecord}
+
+	mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	mockMdns.EXPECT().RequestPairingEntries().Return(entries, nil).Once()
+
+	expectedDigestBytes, _ := hexToBytes(txtRecord.Digest)
+	mockCrypto.EXPECT().
+		ValidateDigest(
+			suite.testSecret,
+			mock.MatchedBy(func(params api.HMACParams) bool {
+				return params.Algorithm == api.AlgorithmHMACSHA256
+			}),
+			expectedDigestBytes).
+		Return(nil).
+		Once()
+	mockHistory.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, txtRecord.Digest).Return(false).Once()
+	mockHistory.EXPECT().RecordPairing(api.AlgorithmHMACSHA256, txtRecord.Digest).Return().Once()
+
+	accepted := make(chan struct{})
+	mockHub.EXPECT().OnPairingSuccess(txtRecord.TrustId, txtRecord.TrustPar).Return().Once().
+		Run(func(mock.Arguments) { close(accepted) })
+
+	err := sut.StartListening(context.Background(), suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("snapshot record was not evaluated after StartListening")
+	}
+
+	assert.Eventually(suite.T(), func() bool {
+		return !sut.GetListenerStatus().Active
+	}, time.Second, 10*time.Millisecond, "listener should stop after accepting the snapshot record")
+}
+
+func (suite *ListenerTestSuite) TestStartListening_SnapshotReadError_KeepsListening() {
+	// The push subscription is already in place when the snapshot pull runs;
+	// a failed pull must not tear the listener down.
+	mockMdns := mocks.NewMdnsPairingInterface(suite.T())
+	mockCrypto := mocks.NewPairingCryptoInterface(suite.T())
+	mockHistory := mocks.NewPairingHistoryProviderInterface(suite.T())
+	mockHub := mocks.NewPairingHubInterface(suite.T())
+	sut := NewPairingListener(mockMdns, mockCrypto, mockHistory, mockHub, suite.localService)
+
+	mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	pulled := make(chan struct{})
+	mockMdns.EXPECT().RequestPairingEntries().Return(nil, errors.New("mdns not ready")).Once().
+		Run(func(mock.Arguments) { close(pulled) })
+
+	err := sut.StartListening(context.Background(), suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	select {
+	case <-pulled:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("StartListening did not read the record snapshot")
+	}
+
+	assert.True(suite.T(), sut.GetListenerStatus().Active,
+		"a failed snapshot read must not tear down the subscription")
+
+	assert.NoError(suite.T(), sut.StopListening())
 }
 
 /* Test Helper Functions */
