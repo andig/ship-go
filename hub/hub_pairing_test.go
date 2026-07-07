@@ -2669,6 +2669,56 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ReusesExi
 	// This is implicitly verified by the mock framework since we didn't set that expectation
 }
 
+func (suite *EnablePairingListenerTestSuite) TestStartPairingService_TrustedAddCuPresent_ListenerNotStarted() {
+	// Pairing spec §4.3: a restart does not change devA's intent to continue
+	// the pairing with the trusted devZ, so processing addCu-requests must
+	// stay deactivated at startup. The §4.3 1.a replacement timer — not the
+	// listener — owns the reactivation. Starting the listener here would
+	// also let a new request be evaluated and deferred during the
+	// replacement window, consuming its digest so the post-window
+	// re-evaluation would reject it as a replay.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	// addCu trust always carries a fingerprint (established from trustpar)
+	trustedDevice, err := api.NewServiceDetails("bootaddcuski", "AABBCCDD00112233", "boot-addcu-ship")
+	suite.Require().NoError(err)
+	trustedDevice.SetPairingType(api.PairingTypeAddCu)
+	trustedDevice.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, trustedDevice)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockPairingService.EXPECT().Start().Return(nil).Once()
+
+	suite.sut.startPairingService()
+
+	suite.mockListener.AssertNotCalled(suite.T(), "StartListening", mock.Anything, mock.Anything)
+
+	// The startup sequence hands reactivation to the replacement timer
+	suite.sut.startAddCuReplacementTimersForOfflineDevices()
+	assert.True(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("boot-addcu-ship"),
+		"Offline trusted addCu device must be tracked by the replacement timer instead of an active listener")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestStartPairingService_NoTrustedAddCu_ListenerStarts() {
+	// Without a trusted addCu device the startup guard must not fire:
+	// processing addCu-requests is activated as configured (§4.2 rule 1).
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockPairingService.EXPECT().Start().Return(nil).Once()
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once()
+
+	suite.sut.startPairingService()
+}
+
 func (suite *HubPairingCompositionTestSuite) TestSetPairingService() {
 	// Test SetPairingService before hub is started
 	mockPairingService := mocks.NewShipPairingServiceInterface(suite.T())

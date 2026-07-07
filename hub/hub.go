@@ -262,6 +262,21 @@ func (h *Hub) startPairingService() {
 	// Start SHIP pairing behavior based on configuration
 	switch pairingConfig.Mode {
 	case api.PairingModeListener, api.PairingModeBoth:
+		// Pairing spec §4.3: processing addCu-requests stays deactivated as
+		// long as the pairing with the trusted devZ is intended — a restart
+		// does not change that intent. With a trusted addCu device present
+		// (e.g. restored from persistence), the listener must not start:
+		// startAddCuReplacementTimersForOfflineDevices arms the §4.3 1.a
+		// replacement timer, whose expiry is the only sanctioned automatic
+		// reactivation, and a completed connection keeps processing off
+		// (§4.3 1.b.ii). Starting the listener here would also let a new
+		// request be evaluated and deferred during the replacement window,
+		// consuming its digest so the post-window re-evaluation would
+		// reject it as a replay.
+		if trusted := h.GetTrustedAddCuDevice(); trusted != nil {
+			logging.Log().Debug("pairing listener not started: trusted addCu device present", "shipID", trusted.ShipID())
+			break
+		}
 		if err := h.enablePairingListener(pairingConfig); err != nil {
 			logging.Log().Error("ship pairing listener failed to start:", err)
 			// Continue Hub startup - pairing is optional
