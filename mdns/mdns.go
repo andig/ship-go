@@ -51,9 +51,9 @@ func DefaultProviderFactory() *ProviderFactory {
 // The logicalID (the map key in announcedPairings) is stable and returned to callers.
 // providerID is transient and updated transparently when interfaces change.
 type announcedPairing struct {
-	serviceName string               // mDNS service name — stable across re-announcements
-	txtRecord   *api.ShipPairingTXT  // TXT record data
-	providerID  string               // current provider-side instance ID (changes on re-announcement)
+	serviceName string              // mDNS service name — stable across re-announcements
+	txtRecord   *api.ShipPairingTXT // TXT record data
+	providerID  string              // current provider-side instance ID (changes on re-announcement)
 }
 
 type MdnsManager struct {
@@ -105,7 +105,7 @@ type MdnsManager struct {
 	// created during re-announcement. This keeps caller-held IDs valid indefinitely.
 	announcedPairings    map[string]*announcedPairing
 	announcedPairingsMux sync.RWMutex
-	instanceCounter       int // monotonic counter for stable logical ID and service name generation
+	instanceCounter      int // monotonic counter for stable logical ID and service name generation
 
 	// the currently available mDNS entries with the serviceName as the key in the map
 	entries map[string]*api.MdnsEntry
@@ -188,7 +188,7 @@ func NewMDNS(
 		entries:           make(map[string]*api.MdnsEntry),
 		pairingEntries:    make(map[string]*api.ShipPairingTXT),
 		announcedPairings: make(map[string]*announcedPairing),
-		instanceCounter:    0,
+		instanceCounter:   0,
 		providerFactory:   DefaultProviderFactory(),
 	}
 
@@ -931,7 +931,7 @@ func (m *MdnsManager) UnregisterPairingCallback() {
 // detectServiceType determines the service type based on the serviceType parameter
 func (m *MdnsManager) detectServiceType(serviceType string) ServiceType {
 	// Check the serviceType parameter with exact matching
-	switch serviceType {
+	switch strings.ToLower(serviceType) {
 	case shipPairingZeroConfServiceType: // "_shippairing._tcp"
 		return ServiceTypeShipPairing
 	case shipZeroConfServiceType: // "_ship._tcp"
