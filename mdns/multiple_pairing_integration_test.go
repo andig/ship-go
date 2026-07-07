@@ -121,42 +121,42 @@ func (s *MultiplePairingIntegrationSuite) Test_BasicMultiInstance_UniqueInstance
 		TxtVers:    "1",
 		ParType:    api.ParTypeFPSHA256,
 		ForId:      "device-1",
-		ForPar:     "device-1-par",
+		ForPar:     "DCE44F0F4029929CC5B469CED8C0D53209C2F6BED94D4C998D3D8810B2BDC65F",
 		TrustId:    "trust-1",
-		TrustPar:   "trust-1-par",
+		TrustPar:   "899B01F4A3504E91A9A77A08F41ACA92ECF86A2B20BAB312DA0FE9946E73BF48",
 		TrustCurve: api.CurveSecp256r1,
 		Type:       api.CommandTypeAddCU,
-		TrustNonce: "nonce-1",
+		TrustNonce: "9E3F156324D42F0EA4B6F4FCE81D56FB",
 		Alg:        api.AlgorithmHMACSHA256,
-		Digest:     "digest-1",
+		Digest:     "B7257CC0DCB2DFEA6CCE40900E22970AEF89B9E796003E01F90F6F7EF91B8C5A",
 	}
 
 	txtRecord2 := &api.ShipPairingTXT{
 		TxtVers:    "1",
 		ParType:    api.ParTypeFPSHA256,
 		ForId:      "device-2",
-		ForPar:     "device-2-par",
+		ForPar:     "473BE84634E77E145D91D6DAD4A56285CA2595E7652A9E8B08E26413C50CFF73",
 		TrustId:    "trust-2",
-		TrustPar:   "trust-2-par",
+		TrustPar:   "71111AB21C1B28FB0361DEAFEDB24D9135C49A2ABB612BE5039EFC926907549D",
 		TrustCurve: api.CurveSecp256r1,
 		Type:       api.CommandTypeAddCU,
-		TrustNonce: "nonce-2",
+		TrustNonce: "7474C1E7ED929AF580FE66E460B06039",
 		Alg:        api.AlgorithmHMACSHA256,
-		Digest:     "digest-2",
+		Digest:     "B86AC96437B544D57673EC791A66679AB60D0ACF1FFF564C4FD1CE621F72CC28",
 	}
 
 	txtRecord3 := &api.ShipPairingTXT{
 		TxtVers:    "1",
 		ParType:    api.ParTypeFPSHA256,
 		ForId:      "device-3",
-		ForPar:     "device-3-par",
+		ForPar:     "DF5E6DC8DA8AE4092C0B667CF159771AC272ACEC2DD534B4D0A006FEECBC6B98",
 		TrustId:    "trust-3",
-		TrustPar:   "trust-3-par",
+		TrustPar:   "5F2BED2A140261B20A8FE53A40D6A32E6A1D4C12BDEDAB905B9C1ED597AC9B7B",
 		TrustCurve: api.CurveSecp256r1,
 		Type:       api.CommandTypeAddCU,
-		TrustNonce: "nonce-3",
+		TrustNonce: "F3BA9E408E06FCFC2340E086D1F128BC",
 		Alg:        api.AlgorithmHMACSHA256,
-		Digest:     "digest-3",
+		Digest:     "2B4F6D09056A6DFF68C83C007C5657FA3DEAC4042E6EDF0413C8536FCD5F6B85",
 	}
 
 	// Announce 3 services
@@ -223,15 +223,15 @@ func (s *MultiplePairingIntegrationSuite) Test_SelectiveUnannouncement_InstanceS
 
 	// Create 2 TXT records (simplified test)
 	txtRecord1 := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "dev-1", ForPar: "dev-1-par",
-		TrustId: "trust-1", TrustPar: "trust-1-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce-1", Alg: api.AlgorithmHMACSHA256, Digest: "digest-1",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "dev-1", ForPar: "74F3EFBCB49DDADCFB6E9B68F730B47527E74C5E4B48EC5BC7F42F10A3F1DD25",
+		TrustId: "trust-1", TrustPar: "899B01F4A3504E91A9A77A08F41ACA92ECF86A2B20BAB312DA0FE9946E73BF48", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "9E3F156324D42F0EA4B6F4FCE81D56FB", Alg: api.AlgorithmHMACSHA256, Digest: "B7257CC0DCB2DFEA6CCE40900E22970AEF89B9E796003E01F90F6F7EF91B8C5A",
 	}
 
 	txtRecord2 := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "dev-2", ForPar: "dev-2-par",
-		TrustId: "trust-2", TrustPar: "trust-2-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce-2", Alg: api.AlgorithmHMACSHA256, Digest: "digest-2",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "dev-2", ForPar: "DB2C82AEDBD3B4DC4B76A8302463F4704B3CBC940E9362E791B843701EED1793",
+		TrustId: "trust-2", TrustPar: "71111AB21C1B28FB0361DEAFEDB24D9135C49A2ABB612BE5039EFC926907549D", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "7474C1E7ED929AF580FE66E460B06039", Alg: api.AlgorithmHMACSHA256, Digest: "B86AC96437B544D57673EC791A66679AB60D0ACF1FFF564C4FD1CE621F72CC28",
 	}
 
 	// Announce 2 services
@@ -281,9 +281,9 @@ func (s *MultiplePairingIntegrationSuite) Test_InstanceCounter_FirstInstanceBase
 	}).Times(5)
 
 	txtRecord := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "counter-test", ForPar: "counter-par",
-		TrustId: "trust", TrustPar: "trust-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce", Alg: api.AlgorithmHMACSHA256, Digest: "digest",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "counter-test", ForPar: "A2BFFDCF15F993F645572C3205BD91E5BECC7B1C2DD3BE757FE8108E753547C9",
+		TrustId: "trust", TrustPar: "3947B6E7E35B27068B95F02CA4F17FAB6118A45E5C4401C38172FF3F5B7D4B35", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "78377B525757B494427F89014F97D799", Alg: api.AlgorithmHMACSHA256, Digest: "0BF474896363505E5EA5E5D6ACE8EBFB13A760A409B1FB467D428FC716F9F284",
 	}
 
 	// Announce 5 services to test counter progression
@@ -342,14 +342,14 @@ func (s *MultiplePairingIntegrationSuite) Test_ThreadSafety_ConcurrentAnnounceme
 					TxtVers:    "1",
 					ParType:    api.ParTypeFPSHA256,
 					ForId:      fmt.Sprintf("worker-%d-announcement-%d", workerID, i),
-					ForPar:     fmt.Sprintf("worker-%d-par-%d", workerID, i),
+					ForPar:     fmt.Sprintf("%032X%032X", workerID, i),
 					TrustId:    "concurrent-trust",
-					TrustPar:   "concurrent-trust-par",
+					TrustPar:   "9398C1AED9B017919BD462A1E5104D840DBF624283F706DEE55C3E6CAB41FA57",
 					TrustCurve: api.CurveSecp256r1,
 					Type:       api.CommandTypeAddCU,
-					TrustNonce: fmt.Sprintf("nonce-%d-%d", workerID, i),
+					TrustNonce: fmt.Sprintf("%016X%016X", workerID, i),
 					Alg:        api.AlgorithmHMACSHA256,
-					Digest:     fmt.Sprintf("digest-%d-%d", workerID, i),
+					Digest:     fmt.Sprintf("%032X%032X", workerID+1, i+1),
 				}
 
 				instanceID, err := s.sut.AnnouncePairingService(txtRecord)
@@ -418,9 +418,9 @@ func (s *MultiplePairingIntegrationSuite) Test_ServiceNameValidation_SHIPComplia
 	}).Times(3)
 
 	txtRecord := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "naming-test", ForPar: "naming-par",
-		TrustId: "trust", TrustPar: "trust-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce", Alg: api.AlgorithmHMACSHA256, Digest: "digest",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "naming-test", ForPar: "4F325E114E43036701CDBC4295C02A61DE3E82D83F877B4A4812D07D8E5B6B1D",
+		TrustId: "trust", TrustPar: "3947B6E7E35B27068B95F02CA4F17FAB6118A45E5C4401C38172FF3F5B7D4B35", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "78377B525757B494427F89014F97D799", Alg: api.AlgorithmHMACSHA256, Digest: "0BF474896363505E5EA5E5D6ACE8EBFB13A760A409B1FB467D428FC716F9F284",
 	}
 
 	// Announce 3 services
@@ -461,7 +461,7 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 		s.sut.port,
 		mock.AnythingOfType("[]string"),
 	).Return("test-instance-1", nil).Once()
-	
+
 	s.mockProvider.EXPECT().AnnounceService(
 		shipPairingZeroConfServiceType,
 		mock.AnythingOfType("string"),
@@ -474,15 +474,15 @@ func (s *MultiplePairingIntegrationSuite) Test_StateManagement_InternalConsisten
 	s.mockProvider.EXPECT().UnannounceService("test-instance-2").Return(nil).Once()
 
 	txtRecord1 := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "state-1", ForPar: "state-1-par",
-		TrustId: "trust-1", TrustPar: "trust-1-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce-1", Alg: api.AlgorithmHMACSHA256, Digest: "digest-1",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "state-1", ForPar: "E24077EAF8DF1CC7C141C1C8127320C348AB835E5A02BB3BC753871000D8C041",
+		TrustId: "trust-1", TrustPar: "899B01F4A3504E91A9A77A08F41ACA92ECF86A2B20BAB312DA0FE9946E73BF48", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "9E3F156324D42F0EA4B6F4FCE81D56FB", Alg: api.AlgorithmHMACSHA256, Digest: "B7257CC0DCB2DFEA6CCE40900E22970AEF89B9E796003E01F90F6F7EF91B8C5A",
 	}
 
 	txtRecord2 := &api.ShipPairingTXT{
-		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "state-2", ForPar: "state-2-par",
-		TrustId: "trust-2", TrustPar: "trust-2-par", TrustCurve: api.CurveSecp256r1,
-		Type: api.CommandTypeAddCU, TrustNonce: "nonce-2", Alg: api.AlgorithmHMACSHA256, Digest: "digest-2",
+		TxtVers: "1", ParType: api.ParTypeFPSHA256, ForId: "state-2", ForPar: "1E7F22927FDB2BC86E8FB612303B9A71A6AE8767BCE6FCC0EFEF19DC5694949F",
+		TrustId: "trust-2", TrustPar: "71111AB21C1B28FB0361DEAFEDB24D9135C49A2ABB612BE5039EFC926907549D", TrustCurve: api.CurveSecp256r1,
+		Type: api.CommandTypeAddCU, TrustNonce: "7474C1E7ED929AF580FE66E460B06039", Alg: api.AlgorithmHMACSHA256, Digest: "B86AC96437B544D57673EC791A66679AB60D0ACF1FFF564C4FD1CE621F72CC28",
 	}
 
 	// Test initial state
@@ -574,14 +574,14 @@ func (s *MultiplePairingIntegrationSuite) Test_CompleteScenario_AnnouncerMode() 
 		par         string
 		fingerprint string
 	}{
-		{"HeatPump-Model-A-001", "HP_A_001_PAR", "FP_HP_A_001"},
-		{"HeatPump-Model-B-002", "HP_B_002_PAR", "FP_HP_B_002"},
-		{"HeatPump-Model-C-003", "HP_C_003_PAR", "FP_HP_C_003"},
-		{"HeatPump-Model-D-004", "HP_D_004_PAR", "FP_HP_D_004"},
+		{"HeatPump-Model-A-001", "BBA83A29890996E6D8D0E9CAE726D9A99A9B8668625AD991186786C24DD6D0E4", "FP_HP_A_001"},
+		{"HeatPump-Model-B-002", "6A39F45EF7B47CD418F52AC7C74D209276845A758A227F71FCB4494700A11C1B", "FP_HP_B_002"},
+		{"HeatPump-Model-C-003", "0C90A4FC4D6EA67168D3F5BFDC177A171FDED6E5AB12C05471BBD0D0CCEBE864", "FP_HP_C_003"},
+		{"HeatPump-Model-D-004", "C165AC5B1AFAFF63F2BBA5B1B906275AFFAF6C410738FD93F0FAA30E8E0898CA", "FP_HP_D_004"},
 	}
 
 	smgwID := "SMGW-Pro-2000"
-	smgwPAR := "SMGW_PRO_2000_PAR"
+	smgwPAR := "6EF7B2E7122D73F0AA52D32D388DB166DF93FA7B40E06B17936001F2FAB0B6E6"
 
 	var instanceIDs []string
 
@@ -597,9 +597,9 @@ func (s *MultiplePairingIntegrationSuite) Test_CompleteScenario_AnnouncerMode() 
 			TrustPar:   smgwPAR,
 			TrustCurve: api.CurveSecp256r1,
 			Type:       api.CommandTypeAddCU,
-			TrustNonce: fmt.Sprintf("NONCE_%d", i+1),
+			TrustNonce: fmt.Sprintf("%032X", i+1),
 			Alg:        api.AlgorithmHMACSHA256,
-			Digest:     fmt.Sprintf("DIGEST_%d", i+1),
+			Digest:     fmt.Sprintf("%064X", i+1),
 		}
 
 		instanceID, err := s.sut.AnnouncePairingService(txtRecord)

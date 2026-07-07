@@ -212,7 +212,16 @@ func (suite *ShipPairingTestSuite) TestShipPairingTXT_FromMap_InvalidTxtVers() {
 }
 
 func (suite *ShipPairingTestSuite) TestShipPairingTXT_Validate() {
-	// Test validation of TXT record fields
+	// Test validation of TXT record fields. Records must be complete —
+	// Validate() also enforces the value formats of pairing spec section
+	// 5.4, Table 1 — so each case starts from a valid record and mutates
+	// only the field under test.
+	record := func(mutate func(*ShipPairingTXT)) ShipPairingTXT {
+		txt := validFormatTXTRecord()
+		mutate(&txt)
+		return txt
+	}
+
 	tests := []struct {
 		name      string
 		txt       ShipPairingTXT
@@ -220,67 +229,37 @@ func (suite *ShipPairingTestSuite) TestShipPairingTXT_Validate() {
 		errMsg    string
 	}{
 		{
-			name: "valid TXT record",
-			txt: ShipPairingTXT{
-				Alg:        "hmacSha256",
-				ParType:    "fpSha256",
-				Type:       "addCu",
-				TrustCurve: "secp256r1",
-			},
+			name:      "valid TXT record",
+			txt:       record(func(*ShipPairingTXT) {}),
 			expectErr: false,
 		},
 		{
-			name: "invalid algorithm",
-			txt: ShipPairingTXT{
-				Alg:        "sha1",
-				ParType:    "fpSha256",
-				Type:       "addCu",
-				TrustCurve: "secp256r1",
-			},
+			name:      "invalid algorithm",
+			txt:       record(func(txt *ShipPairingTXT) { txt.Alg = "sha1" }),
 			expectErr: true,
 			errMsg:    "algorithm",
 		},
 		{
-			name: "invalid parameter type",
-			txt: ShipPairingTXT{
-				Alg:        "hmacSha256",
-				ParType:    "ski",
-				Type:       "addCu",
-				TrustCurve: "secp256r1",
-			},
+			name:      "invalid parameter type",
+			txt:       record(func(txt *ShipPairingTXT) { txt.ParType = "ski" }),
 			expectErr: true,
 			errMsg:    "parameter type",
 		},
 		{
-			name: "invalid command type",
-			txt: ShipPairingTXT{
-				Alg:        "hmacSha256",
-				ParType:    "fpSha256",
-				Type:       "removeCu",
-				TrustCurve: "secp256r1",
-			},
+			name:      "invalid command type",
+			txt:       record(func(txt *ShipPairingTXT) { txt.Type = "removeCu" }),
 			expectErr: true,
 			errMsg:    "command type",
 		},
 		{
-			name: "invalid trust curve",
-			txt: ShipPairingTXT{
-				Alg:        "hmacSha256",
-				ParType:    "fpSha256",
-				Type:       "addCu",
-				TrustCurve: "secp384r1",
-			},
+			name:      "invalid trust curve",
+			txt:       record(func(txt *ShipPairingTXT) { txt.TrustCurve = "secp384r1" }),
 			expectErr: true,
 			errMsg:    "trust curve",
 		},
 		{
-			name: "valid brainpool curve",
-			txt: ShipPairingTXT{
-				Alg:        "hmacSha256",
-				ParType:    "fpSha256",
-				Type:       "addCu",
-				TrustCurve: "brainpoolP256r1",
-			},
+			name:      "valid brainpool curve",
+			txt:       record(func(txt *ShipPairingTXT) { txt.TrustCurve = "brainpoolP256r1" }),
 			expectErr: false,
 		},
 	}

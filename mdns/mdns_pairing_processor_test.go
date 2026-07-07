@@ -43,7 +43,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 		"forid":      "target-device-id",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "source-device-id",
-		"trustpar":   "source-device-par",
+		"trustpar":   "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -66,7 +66,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 	assert.Equal(s.T(), "target-device-id", s.receivedPairingData.ForId)
 	assert.Equal(s.T(), "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943", s.receivedPairingData.ForPar)
 	assert.Equal(s.T(), "source-device-id", s.receivedPairingData.TrustId)
-	assert.Equal(s.T(), "source-device-par", s.receivedPairingData.TrustPar)
+	assert.Equal(s.T(), "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5", s.receivedPairingData.TrustPar)
 	assert.Equal(s.T(), "secp256r1", s.receivedPairingData.TrustCurve)
 	assert.Equal(s.T(), "addCu", s.receivedPairingData.Type)
 	assert.Equal(s.T(), "BDCEE427FA7208DF3C1F2A749BA6F4D4", s.receivedPairingData.TrustNonce)
@@ -77,7 +77,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_ValidEntry() {
 func (s *PairingProcessorSuite) Test_processPairingEntry_MissingMandatoryField() {
 	// Missing txtvers (mandatory field)
 	elements := map[string]string{
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -98,7 +98,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_InvalidTxtVers() {
 	// Invalid txtvers value (must be "1")
 	elements := map[string]string{
 		"txtvers": "2",
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -119,7 +119,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_NoCallback() {
 	// Valid pairing data but no callback registered
 	elements := map[string]string{
 		"txtvers": "1",
-		"partype":    "fpSha256",
+		"partype": "fpSha256",
 		"forid":   "target-device-id",
 		"trustid": "source-device-id",
 	}
@@ -143,7 +143,7 @@ func (s *PairingProcessorSuite) Test_processPairingEntry_RemoveEntry() {
 		"forid":      "target-device-id",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "source-device-id",
-		"trustpar":   "source-device-par",
+		"trustpar":   "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -188,7 +188,7 @@ func (s *PairingProcessorSuite) Test_RegisterPairingCallback() {
 		"forid":      "target-device-id",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "source-device-id",
-		"trustpar":   "source-device-par",
+		"trustpar":   "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -221,7 +221,7 @@ func (s *PairingProcessorSuite) Test_UnregisterPairingCallback() {
 		"forid":      "target-device-id",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "source-device-id",
-		"trustpar":   "source-device-par",
+		"trustpar":   "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",

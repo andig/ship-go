@@ -66,9 +66,9 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ActiveDiscove
 					"txtvers":    "1",
 					"partype":    "fpSha256",
 					"forid":      "HeatPump-X",
-					"forpar":     "heatpump-par-123",
+					"forpar":     "BB01A0569C9433A5C10D8D60A5ACAB1DD9BCB56AB61AA49CCDB5CAD1D49A5981",
 					"trustid":    "SMGW-Pro",
-					"trustpar":   "smgw-par-456",
+					"trustpar":   "5EA9D61CB7BD29BD247D3978D9D7171D9FC22E98E059378B0CCB810E216E123E",
 					"trustcurve": "secp256r1",
 					"type":       "addCu",
 					"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -101,9 +101,9 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ActiveDiscove
 	if len(discoveredServices) > 0 {
 		service := discoveredServices[0]
 		assert.Equal(s.T(), "HeatPump-X", service.ForId)
-		assert.Equal(s.T(), "heatpump-par-123", service.ForPar)
+		assert.Equal(s.T(), "BB01A0569C9433A5C10D8D60A5ACAB1DD9BCB56AB61AA49CCDB5CAD1D49A5981", service.ForPar)
 		assert.Equal(s.T(), "SMGW-Pro", service.TrustId)
-		assert.Equal(s.T(), "smgw-par-456", service.TrustPar)
+		assert.Equal(s.T(), "5EA9D61CB7BD29BD247D3978D9D7171D9FC22E98E059378B0CCB810E216E123E", service.TrustPar)
 		assert.Equal(s.T(), "addCu", service.Type)
 	}
 	mu.Unlock()
@@ -113,7 +113,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_FiltersBySKI(
 	// Test that SearchPairingServices can filter pairing offers by target SKI
 	// This simulates a heat pump only accepting pairing offers meant for it
 
-	heatPumpPAR := "heatpump-par-abc"
+	heatPumpPAR := "5242032C6E1499BECD5772673847C3465E339B8C3B375645BE3894B321FD3521"
 	var receivedOffer *api.ShipPairingTXT
 
 	// Callback that only accepts offers for this specific heat pump
@@ -143,9 +143,9 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_FiltersBySKI(
 		"txtvers":    "1",
 		"partype":    "fpSha256",
 		"forid":      "OtherDevice",
-		"forpar":     "other-par-xyz", // Different PAR
+		"forpar":     "E5635F4F84E95DC5B157270FFFEBD3F5C51495ACF7F76873DD934AE3BE3A7195", // Different PAR
 		"trustid":    "SMGW-1",
-		"trustpar":   "smgw-par-1",
+		"trustpar":   "05E1FE249857D0E94DC9FBFFBFD8D7A5430788A89E83F1C884398189B6A8E768",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -159,7 +159,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_FiltersBySKI(
 		"forid":      "HeatPump",
 		"forpar":     heatPumpPAR, // Our PAR
 		"trustid":    "SMGW-2",
-		"trustpar":   "smgw-par-2",
+		"trustpar":   "A96AC97A999CC5AFB8A908F2515E6657E65CF25A486B9C19DC165F3BAD374A47",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -211,7 +211,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_HandlesRemova
 		"forid":      "Device",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "SMGW",
-		"trustpar":   "smgw-par",
+		"trustpar":   "169CC063AAF7299B9718BA3DFDC223BF6A037DDD97582B79A07CF20B9D346027",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -270,7 +270,7 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ReplaceCallba
 		"forid":      "Device",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "SMGW",
-		"trustpar":   "smgw-par",
+		"trustpar":   "169CC063AAF7299B9718BA3DFDC223BF6A037DDD97582B79A07CF20B9D346027",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
@@ -343,8 +343,8 @@ func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_ValidationErr
 func (s *SearchPairingIntegrationSuite) Test_SearchPairingServices_RealWorldScenario() {
 	// Simulate a real-world heat pump listening for SMGW pairing announcements
 
-	heatPumpPAR := "HP-PAR-12345"
-	smgwPAR := "SMGW-PAR-67890"
+	heatPumpPAR := "1F6522C41DA6D4EAEB5136453D4DEC6B4DE30710F9C5E494F3B8D9D67645A760"
+	smgwPAR := "85C00706029A6B6226511F3D3599A6A087823F0B226E94A1785C800BE619BCE9"
 
 	// Track all discovered pairing offers
 	var offers []*api.ShipPairingTXT
