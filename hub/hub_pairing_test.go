@@ -2719,6 +2719,82 @@ func (suite *EnablePairingListenerTestSuite) TestStartPairingService_NoTrustedAd
 	suite.sut.startPairingService()
 }
 
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_TrustedAddCu_StopsListener() {
+	// Pairing spec §4.3: registering trust in an addCu device expresses the
+	// pairing intent, so processing addCu-requests must deactivate at
+	// registration — not only once a connection completes. Without this, the
+	// listener stays armed (indefinitely for an offline device) and a third
+	// devZ announcing a valid request would immediately replace the trust
+	// just registered, as no replacement window is armed on this path.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockListener.EXPECT().StopListening().Return(nil).Once()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "registeraddcuski",
+		Fingerprint: "AABBCCDD00112233",
+		ShipID:      "register-addcu-ship",
+		PairingType: api.PairingTypeAddCu,
+	})
+}
+
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_OfflineTrustedAddCu_ArmsReplacementTimer() {
+	// Registering an offline trusted addCu device deactivates the listener, but
+	// §4.3 1.a still requires an automatic reactivation path: after 15 minutes
+	// of no SHIP Message Exchange the listener must reopen. RegisterRemoteService
+	// therefore arms the replacement timer for the offline device, exactly as
+	// startAddCuReplacementTimersForOfflineDevices does on the startup path.
+	// Without it the device would stay deactivated indefinitely.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockListener.EXPECT().StopListening().Return(nil).Once()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "offlineaddcuski",
+		Fingerprint: "AABBCCDD00112233",
+		ShipID:      "offline-addcu-ship",
+		PairingType: api.PairingTypeAddCu,
+	})
+
+	assert.True(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("offline-addcu-ship"),
+		"Offline trusted addCu device must be tracked by the replacement timer so the listener reactivates after 15 min")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_DefaultPairing_ListenerUntouched() {
+	// Registering a traditional (non-addCu) service expresses no addCu
+	// pairing intent, so the listener must keep running.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "registerdefaultski",
+		Fingerprint: "00112233AABBCCDD",
+		ShipID:      "register-default-ship",
+		PairingType: api.PairingTypeDefault,
+	})
+
+	suite.mockListener.AssertNotCalled(suite.T(), "StopListening")
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("register-default-ship"),
+		"A traditional (non-addCu) registration must not arm the addCu replacement timer")
+}
+
 func (suite *HubPairingCompositionTestSuite) TestSetPairingService() {
 	// Test SetPairingService before hub is started
 	mockPairingService := mocks.NewShipPairingServiceInterface(suite.T())

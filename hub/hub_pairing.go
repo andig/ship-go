@@ -143,12 +143,36 @@ func (h *Hub) RegisterRemoteService(identity api.ServiceIdentity) {
 		return
 	}
 
+	// Pairing spec §4.3: registering trust in an addCu device expresses the
+	// pairing intent, so processing of addCu-requests must deactivate now —
+	// not only once the connection completes (HandleShipHandshakeStateUpdate).
+	// Otherwise the listener stays armed (indefinitely if the device is
+	// offline) and a third devZ announcing a valid request would immediately
+	// replace the trust registered here, since no replacement window is armed
+	// on this path.
+	isTrustedAddCu := service.Trusted() && service.PairingType() == api.PairingTypeAddCu && service.ShipID() != ""
+	if isTrustedAddCu {
+		h.stopPairingListener()
+	}
+
 	// if the hub has started, trigger a search and connection attempt
 	conn := h.connectionForService(service)
 	// remotely initiated?
 	if conn != nil {
 		conn.ApprovePendingHandshake()
 		return
+	}
+
+	// The addCu device has no live connection, so it is offline. Arm the
+	// §4.3 1.a replacement timer — the only sanctioned automatic reactivation —
+	// so that after 15 minutes of no SHIP Message Exchange the listener
+	// reopens. This mirrors startAddCuReplacementTimersForOfflineDevices on the
+	// startup path: without it, stopping the listener above would leave an
+	// offline devZ deactivated indefinitely, recoverable only by manual removal
+	// (UnregisterRemoteService). A completed connection cancels the timer
+	// (StopAddCuReplacementTimer in HandleShipHandshakeStateUpdate).
+	if isTrustedAddCu {
+		h.addCuReplacementTracker.StartTimer(service.ShipID(), h.handleAddCuReplacementTimeout)
 	}
 
 	h.mdns.RequestMdnsEntries()
