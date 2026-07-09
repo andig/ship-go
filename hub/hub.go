@@ -49,7 +49,13 @@ type Hub struct {
 	// SKIs with an outgoing dial in flight but not yet registered
 	connectionsInitiating map[string]bool
 
-	port        int
+	// port is the configured port (0 means "let the OS assign one").
+	port int
+	// boundPort is the actual bound port, resolved once the websocket
+	// server starts listening; guarded by muxPort since Port() is exported.
+	boundPort int
+	muxPort   sync.RWMutex
+
 	certificate tls.Certificate
 
 	localService *api.ServiceDetails
@@ -151,6 +157,7 @@ func NewHub(hubReader api.HubReaderInterface,
 		connectionDelayTimers:       make(map[string]*connectionDelayTimer),
 		hubReader:                   hubReader,
 		port:                        port,
+		boundPort:                   port,
 		certificate:                 certificate,
 		localService:                localService,
 		mdns:                        mdns,
