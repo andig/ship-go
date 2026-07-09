@@ -9,6 +9,7 @@ import (
 	"github.com/enbility/ship-go/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // newMdnsTestHub builds a Hub with the state ReportMdnsEntries touches.
@@ -547,26 +548,31 @@ func TestReportMdnsEntries_TrustedServiceSurvivesTransientMdnsDrop(t *testing.T)
 	// A trusted, paired remote we have been asked to (re)connect to.
 	ski := "0123456789abcdef0123456789abcdefffffffff"
 	service, err := api.NewServiceDetails(ski, "", "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	service.SetTrusted(true)
 	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued)
 	hub.remoteServices = append(hub.remoteServices, service)
 
-	// A reconnect dial has already been scheduled for this SKI.
-	hub.connectionAttemptCounter[ski] = 0
-	hub.connectionDelayTimers[ski] = newConnectionDelayTimer(time.Hour, func() {})
+	present := []*api.MdnsEntry{{Name: "Service 1", Ski: ski, Identifier: "ID1"}}
+	absent := map[string]*api.MdnsEntry{}
 
-	// The remote was present in the previous mDNS snapshot ...
-	hub.knownMdnsEntries = []*api.MdnsEntry{{Name: "Service 1", Ski: ski, Identifier: "ID1"}}
+	// Repeat the appear-then-drop cycle so the guard reliably catches a regression
+	// instead of passing by chance on a single mDNS report.
+	for range 100 {
+		// A reconnect dial has been scheduled while the remote was present ...
+		hub.connectionAttemptCounter[ski] = 0
+		hub.storeConnectionDelayTimer(ski, newConnectionDelayTimer(time.Hour, func() {}))
+		hub.knownMdnsEntries = present
 
-	// ... but is absent from the next one for a moment.
-	hub.ReportMdnsEntries(map[string]*api.MdnsEntry{}, true)
+		// ... and the remote drops out of the next snapshot for a moment.
+		hub.ReportMdnsEntries(absent, true)
 
-	// The pending reconnect to the trusted device must survive the transient drop.
-	assert.Contains(t, hub.connectionDelayTimers, ski,
-		"pending reconnect timer for a trusted device must survive a transient mDNS drop")
-	assert.Contains(t, hub.connectionAttemptCounter, ski,
-		"connection attempt counter for a trusted device must survive a transient mDNS drop")
+		// The pending reconnect to the trusted device must survive the drop.
+		require.Contains(t, hub.connectionDelayTimers, ski,
+			"pending reconnect timer for a trusted device must survive a transient mDNS drop")
+		require.Contains(t, hub.connectionAttemptCounter, ski,
+			"connection attempt counter for a trusted device must survive a transient mDNS drop")
+	}
 }
 
 // Create tests the cover ReportMdnsEntries implementation
