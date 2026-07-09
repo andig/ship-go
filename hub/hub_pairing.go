@@ -574,7 +574,8 @@ func (h *Hub) OnPairingSuccess(remoteShipID, remoteFingerprint string) {
 
 // OnPairingFailure handles pairing validation failure (implements PairingHubInterface)
 func (h *Hub) OnPairingFailure(remoteShipID, remoteFingerprint string, reason error) {
-	// Use ServiceForFingerprint for consistent service management and SKI normalization
+	// Build a detached identity from the fingerprint/shipID only to report the
+	// failure; the hub's registered services are not looked up or modified.
 	service, err := api.NewServiceDetails("", remoteFingerprint, remoteShipID)
 	if err != nil {
 		logging.Log().Error("OnPairingFailure: invalid identifiers", "shipID", remoteShipID, "fingerprint", remoteFingerprint, "error", err)
