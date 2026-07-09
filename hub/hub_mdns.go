@@ -134,6 +134,11 @@ func (h *Hub) cleanupRemovedMdnsEntries(currentEntries map[string]*api.MdnsEntry
 	// Check each previous entry to see if it's still present
 	for _, prevEntry := range previousEntries {
 		if !currentSKIs[prevEntry.Ski] {
+			// Keep retrying trusted/paired devices: a transient mDNS drop (e.g.
+			// a remote restart before it re-announces) must not strand reconnects.
+			if h.IsRemoteServiceForSKIPaired(prevEntry.Ski) {
+				continue
+			}
 			// SKI is no longer in mDNS - cancel connection attempts immediately
 			logging.Log().Debugf("hub: cleaning up connection attempts for SKI %s (no longer in mDNS)", prevEntry.Ski)
 			h.cancelConnectionDelayTimer(prevEntry.Ski)

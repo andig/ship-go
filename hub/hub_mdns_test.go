@@ -531,4 +531,42 @@ func TestReportMdnsEntries_CleanupWithNoPreviousEntries(t *testing.T) {
 	mockHubReader.AssertExpectations(t)
 }
 
+// TestReportMdnsEntries_TrustedServiceSurvivesTransientMdnsDrop: a paired device
+// briefly absent from one mDNS snapshot must keep its pending reconnect.
+func TestReportMdnsEntries_TrustedServiceSurvivesTransientMdnsDrop(t *testing.T) {
+	mockMdns := mocks.NewMdnsInterface(t)
+	mockMdns.EXPECT().RequestMdnsEntries().Maybe()
+	mockMdns.EXPECT().AnnounceMdnsEntry().Return(nil).Maybe()
+
+	hub := newMdnsTestHub(mockMdns)
+
+	mockHubReader := mocks.NewHubReaderInterface(t)
+	mockHubReader.EXPECT().VisibleRemoteMdnsServicesUpdated(mock.AnythingOfType("[]api.RemoteMdnsService")).Maybe()
+	hub.hubReader = mockHubReader
+
+	// A trusted, paired remote we have been asked to (re)connect to.
+	ski := "0123456789abcdef0123456789abcdefffffffff"
+	service, err := api.NewServiceDetails(ski, "", "")
+	assert.NoError(t, err)
+	service.SetTrusted(true)
+	service.ConnectionStateDetail().SetState(api.ConnectionStateQueued)
+	hub.remoteServices = append(hub.remoteServices, service)
+
+	// A reconnect dial has already been scheduled for this SKI.
+	hub.connectionAttemptCounter[ski] = 0
+	hub.connectionDelayTimers[ski] = newConnectionDelayTimer(time.Hour, func() {})
+
+	// The remote was present in the previous mDNS snapshot ...
+	hub.knownMdnsEntries = []*api.MdnsEntry{{Name: "Service 1", Ski: ski, Identifier: "ID1"}}
+
+	// ... but is absent from the next one for a moment.
+	hub.ReportMdnsEntries(map[string]*api.MdnsEntry{}, true)
+
+	// The pending reconnect to the trusted device must survive the transient drop.
+	assert.Contains(t, hub.connectionDelayTimers, ski,
+		"pending reconnect timer for a trusted device must survive a transient mDNS drop")
+	assert.Contains(t, hub.connectionAttemptCounter, ski,
+		"connection attempt counter for a trusted device must survive a transient mDNS drop")
+}
+
 // Create tests the cover ReportMdnsEntries implementation
