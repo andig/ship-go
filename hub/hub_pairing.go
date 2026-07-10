@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"context"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
@@ -403,15 +402,11 @@ func (h *Hub) StartAnnouncementTo(target api.PairingTarget) error {
 		return fmt.Errorf("failed to create pairing announcer")
 	}
 
-	// Create context for this announcement (child of Hub's pairing context)
-	_, cancel := context.WithCancel(h.pairingCtx)
-
 	// Create announcement state
 	state := announcementState{
-		target:     target,
-		announcer:  announcer,
-		startTime:  time.Now(),
-		cancelFunc: cancel,
+		target:    target,
+		announcer: announcer,
+		startTime: time.Now(),
 	}
 
 	// Enable the announcer with the target's secret
@@ -456,11 +451,6 @@ func (h *Hub) StopAnnouncementTo(shipID string) error {
 	state, exists := h.activeAnnouncements[shipID]
 	if !exists {
 		return fmt.Errorf("no active announcement for device: %s", shipID)
-	}
-
-	// Cancel the announcement context
-	if state.cancelFunc != nil {
-		state.cancelFunc()
 	}
 
 	// Stop the announcer
