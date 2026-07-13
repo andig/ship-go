@@ -2772,6 +2772,25 @@ func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStar
 		"Offline trusted addCu device must be tracked by the replacement timer so the listener reactivates after 15 min")
 }
 
+func (suite *EnablePairingListenerTestSuite) TestShutdown_CancelsArmedReplacementTimer() {
+	// A trusted addCu device that is offline at shutdown leaves the §4.3 1.a
+	// replacement timer armed. Shutdown must cancel it: otherwise
+	// handleAddCuReplacementTimeout would fire up to 15 minutes later on the
+	// torn-down Hub, reactivating the listener and calling into an
+	// already-shut-down pairing service and mDNS.
+	suite.sut.addCuReplacementTracker.StartTimer("offline-addcu-ship", suite.sut.handleAddCuReplacementTimeout)
+	require.True(suite.T(), suite.sut.addCuReplacementTracker.IsInReplacementWindow(),
+		"precondition: replacement timer must be armed")
+
+	suite.sut.Shutdown()
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsInReplacementWindow(),
+		"Shutdown must cancel the armed AddCu replacement timer")
+
+	// Prevent TearDownTest from calling Shutdown a second time
+	suite.sut = nil
+}
+
 func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_DefaultPairing_ListenerUntouched() {
 	// Registering a traditional (non-addCu) service expresses no addCu
 	// pairing intent, so the listener must keep running.

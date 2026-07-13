@@ -292,6 +292,14 @@ func (h *Hub) Shutdown() {
 	// Stop all announcement lifetime timers to prevent post-shutdown callbacks
 	h.announcementLifetimeTracker.StopAll()
 
+	// Stop any armed AddCu replacement timer for the same reason: a trusted
+	// addCu device that is offline at shutdown (e.g. armed at startup by
+	// startAddCuReplacementTimersForOfflineDevices, or by RegisterRemoteService)
+	// would otherwise fire handleAddCuReplacementTimeout up to 15 minutes later,
+	// reactivating the listener and calling into an already-torn-down pairing
+	// service and mDNS.
+	h.addCuReplacementTracker.StopAll()
+
 	// Cancel active announcements first
 	h.muxAnnouncements.Lock()
 	for shipID, state := range h.activeAnnouncements {
