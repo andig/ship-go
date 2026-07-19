@@ -287,3 +287,28 @@ func (s *ServiceIdentitySuite) TestServiceIdentity_String() {
 	assert.NotEmpty(s.T(), minimalStr)
 	assert.Contains(s.T(), minimalStr, "minimal-ski")
 }
+
+func (s *ServiceIdentitySuite) TestServiceIdentity_String_Fingerprint() {
+	// Test: A short/invalid fingerprint (< 64 characters) must not panic
+	shortIdentity := &ServiceIdentity{
+		Fingerprint: "abc",
+	}
+
+	assert.NotPanics(s.T(), func() {
+		str := shortIdentity.String()
+		// The invalid fingerprint is skipped, so it must not appear in the output
+		assert.NotContains(s.T(), str, "Fingerprint:")
+	})
+
+	// Test: A valid 64-character fingerprint is truncated to its first 8 characters
+	validFingerprint := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	assert.Len(s.T(), validFingerprint, 64)
+
+	validIdentity := &ServiceIdentity{
+		Fingerprint: validFingerprint,
+	}
+
+	str := validIdentity.String()
+	assert.Contains(s.T(), str, "Fingerprint:01234567...")
+	assert.NotContains(s.T(), str, validFingerprint)
+}
