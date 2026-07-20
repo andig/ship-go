@@ -32,10 +32,9 @@ var connectionInitiationDelayTimeRanges = []connectionInitiationDelayTimeRange{
 
 // announcementState tracks the state of an active announcement to a target device
 type announcementState struct {
-	target     api.PairingTarget
-	announcer  api.PairingAnnouncerInterface
-	startTime  time.Time
-	cancelFunc context.CancelFunc
+	target    api.PairingTarget
+	announcer api.PairingAnnouncerInterface
+	startTime time.Time
 }
 
 // handling the server and all connections to remote services
@@ -281,9 +280,6 @@ func (h *Hub) Shutdown() {
 	h.muxAnnouncements.Lock()
 	for shipID, state := range h.activeAnnouncements {
 		logging.Log().Debug("stopping announcement to", shipID, "during shutdown")
-		if state.cancelFunc != nil {
-			state.cancelFunc()
-		}
 		if state.announcer != nil {
 			_ = state.announcer.StopAnnouncement()
 		}
