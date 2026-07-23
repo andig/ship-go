@@ -174,12 +174,28 @@ func (c *ShipConnection) handleState(timeout bool, message []byte) {
 	// smeProtocol
 
 	case model.SmeProtHStateServerListenProposal:
+		if timeout {
+			// TC_SHIP_PROT_003: no protocol handshake arrived within the wait
+			// timer -> common abort with error=1 (timeout)
+			c.abortProtocolHandshake(model.MessageProtocolHandshakeErrorErrorTypeTimeout)
+			return
+		}
 		c.handshakeProtocol_smeProtHStateServerListenProposal(message)
 
 	case model.SmeProtHStateServerListenConfirm:
+		if timeout {
+			c.abortProtocolHandshake(model.MessageProtocolHandshakeErrorErrorTypeTimeout)
+			return
+		}
 		c.handshakeProtocol_smeProtHStateServerListenConfirm(message)
 
 	case model.SmeProtHStateClientListenChoice:
+		if timeout {
+			// TC_SHIP_PROT_004: no select arrived within the wait timer ->
+			// common abort with error=1 (timeout)
+			c.abortProtocolHandshake(model.MessageProtocolHandshakeErrorErrorTypeTimeout)
+			return
+		}
 		c.stopTimerSafe()
 		c.handshakeProtocol_smeProtHStateClientListenChoice(message)
 

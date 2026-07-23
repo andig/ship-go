@@ -108,7 +108,9 @@ func (s *InitServerSuite) Test_ServerWait_InvalidMsgType() {
 	s.sut.handleState(false, []byte{0x05, 0x00})
 
 	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
-	assert.Nil(s.T(), s.lastMessage())
+	// TC_SHIP_CMI_001: the server rejects an invalid CMI message by sending a
+	// CMI message (MessageType=0, MessageValue=0) before closing.
+	assert.Equal(s.T(), model.ShipInit, s.lastMessage())
 }
 
 func (s *InitServerSuite) Test_ServerWait_InvalidData() {
@@ -117,7 +119,9 @@ func (s *InitServerSuite) Test_ServerWait_InvalidData() {
 	s.sut.handleState(false, []byte{model.MsgTypeInit, 0x05})
 
 	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
-	assert.Nil(s.T(), s.lastMessage())
+	// TC_SHIP_CMI_001: the server rejects an invalid CMI message by sending a
+	// CMI message (MessageType=0, MessageValue=0) before closing.
+	assert.Equal(s.T(), model.ShipInit, s.lastMessage())
 }
 
 func (s *InitServerSuite) Test_ServerWait_Timeout() {

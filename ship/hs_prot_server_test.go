@@ -1,6 +1,7 @@
 package ship
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 
@@ -13,6 +14,15 @@ import (
 
 func TestProServerSuite(t *testing.T) {
 	suite.Run(t, new(ProServerSuite))
+}
+
+// lastProtocolError decodes the last sent frame as a protocol handshake error
+// and returns its error type, for asserting the SHIP-mandated abort error codes.
+func (s *ProServerSuite) lastProtocolError() model.MessageProtocolHandshakeErrorErrorType {
+	_, data := s.sut.parseMessage(s.lastMessage(), true)
+	var msg model.MessageProtocolHandshakeError
+	_ = json.Unmarshal(data, &msg)
+	return msg.Error
 }
 
 type ProServerSuite struct {
@@ -116,6 +126,8 @@ func (s *ProServerSuite) Test_ListenProposal() {
 	assert.NotNil(s.T(), s.lastMessage())
 }
 
+// TC_SHIP_PROT_005: a valid SME message other than the expected announceMax
+// (here: a select) must trigger the common abort with error=2 (unexpected message).
 func (s *ProServerSuite) Test_ListenProposal_Failure() {
 	s.sut.setState(model.SmeProtHStateServerListenProposal, nil)
 
@@ -134,6 +146,18 @@ func (s *ProServerSuite) Test_ListenProposal_Failure() {
 	assert.Equal(s.T(), false, s.sut.handshakeTimerRunning)
 
 	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
+	assert.Equal(s.T(), model.MessageProtocolHandshakeErrorErrorTypeUnexpectedMessage, s.lastProtocolError())
+}
+
+// TC_SHIP_PROT_003: if no protocol handshake arrives within the wait timer, the
+// server executes the common abort with error=1 (timeout) and closes.
+func (s *ProServerSuite) Test_ListenProposal_Timeout() {
+	s.sut.setState(model.SmeProtHStateServerListenProposal, nil)
+
+	s.sut.handleState(true, nil)
+
+	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
+	assert.Equal(s.T(), model.MessageProtocolHandshakeErrorErrorTypeTimeout, s.lastProtocolError())
 }
 
 func (s *ProServerSuite) Test_ListenConfirm() {
