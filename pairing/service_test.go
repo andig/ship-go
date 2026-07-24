@@ -33,6 +33,8 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (suite *ServiceTestSuite) SetupTest() {
 	suite.mockMdns = mocks.NewMdnsPairingInterface(suite.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	suite.mockMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.mockCrypto = mocks.NewPairingCryptoInterface(suite.T())
 	suite.mockHistory = mocks.NewPairingHistoryProviderInterface(suite.T())
 	suite.mockHub = mocks.NewPairingHubInterface(suite.T())

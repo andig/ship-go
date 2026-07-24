@@ -192,6 +192,8 @@ func (suite *SpecificationIntegrationTestSuite) setupServices() {
 	// Create mocks
 	suite.mockAnnouncerMdns = mocks.NewMdnsPairingInterface(suite.T())
 	suite.mockListenerMdns = mocks.NewMdnsPairingInterface(suite.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	suite.mockListenerMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.mockAnnouncerHub = mocks.NewPairingHubInterface(suite.T())
 	suite.mockListenerHub = mocks.NewPairingHubInterface(suite.T())
 

@@ -31,6 +31,8 @@ func TestListenerIntegrationTestSuite(t *testing.T) {
 
 func (s *ListenerIntegrationTestSuite) SetupTest() {
 	s.mockMdns = mocks.NewMdnsPairingInterface(s.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	s.mockMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	s.mockCrypto = mocks.NewPairingCryptoInterface(s.T())
 	s.mockHistory = mocks.NewPairingHistoryProviderInterface(s.T())
 	s.mockHub = mocks.NewPairingHubInterface(s.T())
