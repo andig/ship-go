@@ -44,8 +44,33 @@ func (s *ServiceDetectionSuite) Test_detectServiceType() {
 			expectedType: ServiceTypeShipPairing,
 		},
 		{
+			name:         "detects SHIP service with uppercase",
+			serviceType:  "_SHIP._TCP",
+			expectedType: ServiceTypeShip,
+		},
+		{
+			name:         "detects SHIP service with mixed case",
+			serviceType:  "_Ship._Tcp",
+			expectedType: ServiceTypeShip,
+		},
+		{
+			name:         "detects SHIP pairing service with uppercase",
+			serviceType:  "_SHIPPAIRING._TCP",
+			expectedType: ServiceTypeShipPairing,
+		},
+		{
+			name:         "detects SHIP pairing service with mixed case",
+			serviceType:  "_ShipPairing._Tcp",
+			expectedType: ServiceTypeShipPairing,
+		},
+		{
 			name:         "returns unknown for unrecognized service",
 			serviceType:  "_http._tcp",
+			expectedType: ServiceTypeUnknown,
+		},
+		{
+			name:         "returns unknown for unrecognized service regardless of case",
+			serviceType:  "_HTTP._TCP",
 			expectedType: ServiceTypeUnknown,
 		},
 		{
