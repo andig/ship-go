@@ -279,7 +279,7 @@ func validPairingElements() map[string]string {
 		"forid":      "target-device-id",
 		"forpar":     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		"trustid":    "source-device-id",
-		"trustpar":   "source-device-par",
+		"trustpar":   "5D41CB9A91494591C5ED24F7FE764E05F7381EE277F2F783841087621CD606D5",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
 		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",
