@@ -378,9 +378,9 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
 	// Test that listener processes announcements from devices that may already be paired
 	// Note: Since we removed early rejection, the validation chain will run but may fail at HMAC if not valid
 	txtRecord := suite.createValidTestTXTRecord()
-	txtRecord.ForId = suite.localService.ShipID()                                           // For our device
-	txtRecord.TrustId = "i:46925_u:43652bk-2-gt1"                                           // Device requesting pairing
-	txtRecord.Digest = "INVALIDDIGEST789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Invalid to trigger failure
+	txtRecord.ForId = suite.localService.ShipID()                                         // For our device
+	txtRecord.TrustId = "i:46925_u:43652bk-2-gt1"                                         // Device requesting pairing
+	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" // Wrong value (valid format) to trigger HMAC failure
 
 	// Start listener to make it active
 	ctx := context.Background()
@@ -517,7 +517,7 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_NonceParsingFailure()
 	// Test nonce hex parsing failure
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
-	txtRecord.TrustNonce = "INVALID_HEX_XYZ" // Invalid hex
+	txtRecord.TrustNonce = "INVALID_HEX_XYZ" // Rejected by format validation (not 32 uppercase hex digits)
 
 	// Start listener
 	ctx := context.Background()
@@ -531,22 +531,22 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_NonceParsingFailure()
 		Return(nil).
 		Maybe()
 
-	// Mock failure notification for nonce parsing error
+	// Mock failure notification for the format validation error
 	suite.mockHub.EXPECT().
-		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidTXTRecord).
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, mock.Anything).
 		Return().
 		Maybe()
 
-	// Test - should fail nonce parsing and continue listening
+	// Test - should fail format validation and continue listening
 	result := suite.sut.handlePairingRequest(txtRecord)
-	assert.True(suite.T(), result, "should continue listening after nonce parsing failure")
+	assert.True(suite.T(), result, "should continue listening after nonce format rejection")
 }
 
 func (suite *ListenerTestSuite) TestValidatePairingRequest_DigestParsingFailure() {
 	// Test digest hex parsing failure
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
-	txtRecord.Digest = "INVALID_HEX_DIGEST_XYZ" // Invalid hex
+	txtRecord.Digest = "INVALID_HEX_DIGEST_XYZ" // Rejected by format validation (not 64 uppercase hex digits)
 
 	// Start listener
 	ctx := context.Background()
@@ -560,15 +560,15 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_DigestParsingFailure(
 		Return(nil).
 		Maybe()
 
-	// Mock failure notification for digest parsing error
+	// Mock failure notification for the format validation error
 	suite.mockHub.EXPECT().
-		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidHMACDigest).
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, mock.Anything).
 		Return().
 		Maybe()
 
-	// Test - should fail digest parsing and continue listening
+	// Test - should fail format validation and continue listening
 	result := suite.sut.handlePairingRequest(txtRecord)
-	assert.True(suite.T(), result, "should continue listening after digest parsing failure")
+	assert.True(suite.T(), result, "should continue listening after digest format rejection")
 }
 
 func (suite *ListenerTestSuite) TestValidatePairingRequest_TrustEstablishmentFailure() {
@@ -597,9 +597,9 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NewDeviceAfterTimeout
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                    // Different device ID
-	txtRecord.TrustPar = "ABCDEF123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Different fingerprint (valid hex)
-	txtRecord.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"    // New digest (valid hex)
+	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                   // Different device ID
+	txtRecord.TrustPar = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789" // Different fingerprint (valid format)
+	txtRecord.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"   // New digest (valid hex)
 
 	// Mock existing AddCu device exists with different ShipID
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
@@ -653,8 +653,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_SameDeviceRepairing_S
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:88888_u:existing-device-id"                                       // Same device ID as existing
-	txtRecord.TrustPar = "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB" // Valid hex fingerprint
+	txtRecord.TrustId = "i:88888_u:existing-device-id"                                      // Same device ID as existing
+	txtRecord.TrustPar = "FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210" // Valid format fingerprint
 
 	// Mock existing AddCu device with same ShipID (re-pairing scenario)
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
@@ -709,9 +709,9 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_FailedHMACValidation_
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                    // Different device
-	txtRecord.TrustPar = "ABCDEF123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Valid hex fingerprint
-	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"    // Valid hex but will fail HMAC
+	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                   // Different device
+	txtRecord.TrustPar = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789" // Valid format fingerprint
+	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"   // Valid hex but will fail HMAC
 
 	// Mock existing AddCu device
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
