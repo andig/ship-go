@@ -261,6 +261,21 @@ func (h *Hub) startPairingService() {
 	// Start SHIP pairing behavior based on configuration
 	switch pairingConfig.Mode {
 	case api.PairingModeListener, api.PairingModeBoth:
+		// Pairing spec §4.3: processing addCu-requests stays deactivated as
+		// long as the pairing with the trusted devZ is intended — a restart
+		// does not change that intent. With a trusted addCu device present
+		// (e.g. restored from persistence), the listener must not start:
+		// startAddCuReplacementTimersForOfflineDevices arms the §4.3 1.a
+		// replacement timer, whose expiry is the only sanctioned automatic
+		// reactivation, and a completed connection keeps processing off
+		// (§4.3 1.b.ii). Starting the listener here would also let a new
+		// request be evaluated and deferred during the replacement window,
+		// consuming its digest so the post-window re-evaluation would
+		// reject it as a replay.
+		if trusted := h.GetTrustedAddCuDevice(); trusted != nil {
+			logging.Log().Debug("pairing listener not started: trusted addCu device present", "shipID", trusted.ShipID())
+			break
+		}
 		if err := h.enablePairingListener(pairingConfig); err != nil {
 			logging.Log().Error("ship pairing listener failed to start:", err)
 			// Continue Hub startup - pairing is optional
@@ -275,6 +290,14 @@ func (h *Hub) startPairingService() {
 func (h *Hub) Shutdown() {
 	// Stop all announcement lifetime timers to prevent post-shutdown callbacks
 	h.announcementLifetimeTracker.StopAll()
+
+	// Stop any armed AddCu replacement timer for the same reason: a trusted
+	// addCu device that is offline at shutdown (e.g. armed at startup by
+	// startAddCuReplacementTimersForOfflineDevices, or by RegisterRemoteService)
+	// would otherwise fire handleAddCuReplacementTimeout up to 15 minutes later,
+	// reactivating the listener and calling into an already-torn-down pairing
+	// service and mDNS.
+	h.addCuReplacementTracker.StopAll()
 
 	// Cancel active announcements first
 	h.muxAnnouncements.Lock()
