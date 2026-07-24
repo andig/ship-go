@@ -32,10 +32,9 @@ var connectionInitiationDelayTimeRanges = []connectionInitiationDelayTimeRange{
 
 // announcementState tracks the state of an active announcement to a target device
 type announcementState struct {
-	target     api.PairingTarget
-	announcer  api.PairingAnnouncerInterface
-	startTime  time.Time
-	cancelFunc context.CancelFunc
+	target    api.PairingTarget
+	announcer api.PairingAnnouncerInterface
+	startTime time.Time
 }
 
 // handling the server and all connections to remote services
@@ -304,9 +303,6 @@ func (h *Hub) Shutdown() {
 	h.muxAnnouncements.Lock()
 	for shipID, state := range h.activeAnnouncements {
 		logging.Log().Debug("stopping announcement to", shipID, "during shutdown")
-		if state.cancelFunc != nil {
-			state.cancelFunc()
-		}
 		if state.announcer != nil {
 			_ = state.announcer.StopAnnouncement()
 		}
@@ -580,10 +576,19 @@ func (h *Hub) addService(service *api.ServiceDetails) bool {
 
 // remove a service from remote services
 //
+// Identifier comparison matches the lookup semantics of
+// ServiceForIdentifierFull: the SKI is normalized and the fingerprint is
+// compared case-insensitively.
+//
 // Parameters:
 //   - ski: The SKI (Subject Key Identifier) of the service. Required if fingerprint is not provided
 //   - fingerprint: The expected certificate fingerprint of the service. Required if SKI is not provided
 func (h *Hub) removeService(ski, fingerprint string) {
+	ski = util.NormalizeSKI(ski)
+	if ski == "" && fingerprint == "" {
+		return
+	}
+
 	h.muxReg.Lock()
 	defer h.muxReg.Unlock()
 
@@ -591,12 +596,32 @@ func (h *Hub) removeService(ski, fingerprint string) {
 		if ski != "" && service.SKI() != ski {
 			continue
 		}
-		if fingerprint != "" && service.Fingerprint() != fingerprint {
+		if fingerprint != "" && !strings.EqualFold(service.Fingerprint(), fingerprint) {
 			continue
 		}
 
 		h.remoteServices = append(h.remoteServices[:i], h.remoteServices[i+1:]...)
 		return
+	}
+}
+
+// removeServiceEntry removes the exact registry entry, regardless of which
+// identifiers it carries. Use this when the entry was already located via a
+// lookup — re-deriving it from identifiers can miss (or hit a different
+// entry) because lookups match more loosely than raw field comparison.
+func (h *Hub) removeServiceEntry(target *api.ServiceDetails) {
+	if target == nil {
+		return
+	}
+
+	h.muxReg.Lock()
+	defer h.muxReg.Unlock()
+
+	for i, service := range h.remoteServices {
+		if service == target {
+			h.remoteServices = append(h.remoteServices[:i], h.remoteServices[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -782,26 +807,9 @@ func (h *Hub) handleAddCuReplacementTimeout(expiredShipID string) {
 		return
 	}
 
+	// StartListening evaluates the currently-live pairing records itself, so
+	// reactivation needs no further replay step here.
 	h.reactivatePairingListener("AddCu device replacement timeout")
-
-	// Check for current pairing announcements
-	if mdnsPairing, ok := h.mdns.(api.MdnsPairingInterface); ok {
-		currentPairingServices, err := mdnsPairing.RequestPairingEntries()
-		if err != nil {
-			logging.Log().Error("Failed to request pairing entries during timeout", "error", err)
-		} else if len(currentPairingServices) > 0 {
-			// Process pending entries through active pairing listener if available
-			h.muxPairingListener.RLock()
-			listener := h.activePairingListener
-			h.muxPairingListener.RUnlock()
-
-			if listener != nil {
-				if err := listener.ProcessPendingEntries(currentPairingServices); err != nil {
-					logging.Log().Error("Failed to process pending pairing entries", "error", err, "expiredShipID", expiredShipID)
-				}
-			}
-		}
-	}
 }
 
 // reactivatePairingListener reactivates the pairing listener when AddCu replacement timeout occurs

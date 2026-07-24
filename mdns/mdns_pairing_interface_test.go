@@ -109,9 +109,9 @@ func (suite *MdnsPairingInterfaceTestSuite) TestAnnouncePairingService_ReturnsIn
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "i:12345_u:TestDevice-1",
-		ForPar:     "ABC123",
+		ForPar:     "E0BEBD22819993425814866B62701E2919EA26F1370499C1037B53B9D49C2C8A",
 		TrustId:    "i:67890_u:TrustedDevice-2",
-		TrustPar:   "DEF456",
+		TrustPar:   "651988B99369E25CCD366A86E658450F0D2C6D112A4FA7B421A67084B3063013",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
 		TrustNonce: "FEDCBA9876543210FEDCBA9876543210",
@@ -138,12 +138,12 @@ func (suite *MdnsPairingInterfaceTestSuite) TestAnnouncePairingService_UniqueIns
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "i:11111_u:Device-1",
-		ForPar:     "AAABBB",
+		ForPar:     "80EA94CDC6E8A55A68C457DFC11D1B52813B23FBDC71380FD7ED563C435A732A",
 		TrustId:    "i:22222_u:Target-1",
-		TrustPar:   "CCCDDD",
+		TrustPar:   "93D80D662D6DA64AEC38B3E0A9BCEA80C475E24F045F86EFEB65A0A36379D0E5",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
-		TrustNonce: "1111111111111111111111111111111111",
+		TrustNonce: "A674B5C5C1641114D5B6B956B61A9D06",
 		Alg:        "hmacSha256",
 		Digest:     "1111111111111111111111111111111111111111111111111111111111111111",
 	}
@@ -152,9 +152,9 @@ func (suite *MdnsPairingInterfaceTestSuite) TestAnnouncePairingService_UniqueIns
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "i:33333_u:Device-2",
-		ForPar:     "EEEFFF",
+		ForPar:     "D76D1FA434F4DBCA95A58C5C60B4FCC28714D8E85C44E3B861CF1DBBF38B427F",
 		TrustId:    "i:44444_u:Target-2",
-		TrustPar:   "GGGHHHH",
+		TrustPar:   "BEFAFE0127C52AB60B6990C8EC2B4D8D584B2D49996BE858DB1C600B0EDDFDBB",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
 		TrustNonce: "22222222222222222222222222222222",
@@ -222,19 +222,19 @@ func (suite *MdnsPairingInterfaceTestSuite) TestMultipleAnnouncementsLifecycle()
 	txtRecords := []*api.ShipPairingTXT{
 		{
 			TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-			ForId: "i:10001_u:Device-A", ForPar: "AAA111", TrustId: "i:20001_u:Target-A", TrustPar: "BBB222",
+			ForId: "i:10001_u:Device-A", ForPar: "8F1170A5C7CB0F30950720380A9E4E69CFBF24C85ECECC233F3BA4E584B7F95C", TrustId: "i:20001_u:Target-A", TrustPar: "83CA8E2701271E4F127C4A769E5EB9265638804AEDBAE06E18710327E5196A07",
 			TrustNonce: "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1", Alg: "hmacSha256",
 			Digest: "AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111",
 		},
 		{
 			TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-			ForId: "i:10002_u:Device-B", ForPar: "CCC333", TrustId: "i:20002_u:Target-B", TrustPar: "DDD444",
+			ForId: "i:10002_u:Device-B", ForPar: "BC0A833B7875E5895C73244DF98C24C7865E4DF0BE53EC96DBA0DAE0A3127A81", TrustId: "i:20002_u:Target-B", TrustPar: "491C8765C3010F2929DC99367AE3D2E44ED6625B6B2B1A1F6EDC6D3E7CC7BB6B",
 			TrustNonce: "B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2", Alg: "hmacSha256",
 			Digest: "BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222",
 		},
 		{
 			TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-			ForId: "i:10003_u:Device-C", ForPar: "EEE555", TrustId: "i:20003_u:Target-C", TrustPar: "FFF666",
+			ForId: "i:10003_u:Device-C", ForPar: "2D3F91252ADB6D405914E6049ABF9CA8B12D8DFED64C318704684D46803639F0", TrustId: "i:20003_u:Target-C", TrustPar: "547E0268555A44DA4F157D8EE3ECBF29DE629ABB88D767DDFBC81B68D9592274",
 			TrustNonce: "C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", Alg: "hmacSha256",
 			Digest: "CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333",
 		},
@@ -275,7 +275,7 @@ func (suite *MdnsPairingInterfaceTestSuite) TestIsPairingServiceAnnounced_WithMu
 
 	txtRecord := &api.ShipPairingTXT{
 		TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-		ForId: "i:50001_u:MultiTest", ForPar: "MULTI1", TrustId: "i:60001_u:MultiTarget", TrustPar: "MULTI2",
+		ForId: "i:50001_u:MultiTest", ForPar: "E844C55EBF6FA76FEBA7A75E5C1849AFE3CFAA325EAC5E855E6341CE0C7AF310", TrustId: "i:60001_u:MultiTarget", TrustPar: "5F18357C75EA23656508DB770F77342C0D8FA462A8720A8EBAA95EF447920799",
 		TrustNonce: "50015001500150015001500150015001", Alg: "hmacSha256",
 		Digest: "5001500150015001500150015001500150015001500150015001500150015001",
 	}
@@ -352,9 +352,9 @@ func (suite *MdnsPairingInterfaceTestSuite) TestInterfaceSignatureChanges() {
 
 	txtRecord := &api.ShipPairingTXT{
 		TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-		ForId: "i:99999_u:SignatureTest", ForPar: "SIG111", TrustId: "i:88888_u:SigTarget", TrustPar: "SIG222",
-		TrustNonce: "SIGNATURE1SIGNATURE1SIGNATURE1SIG", Alg: "hmacSha256",
-		Digest: "SIGNATURESIGNATURESIGNATURESIGNATURESIGNATURESIGNATURESIGNATURESIGN",
+		ForId: "i:99999_u:SignatureTest", ForPar: "F283F5733F807859717CAFC428C61D9E5A862E7CEB32594C36C7E61DE9E8F95B", TrustId: "i:88888_u:SigTarget", TrustPar: "990320BC09E53E16C2818AA53A0A412A5E6DE76BC59F4B2B011B77F78E75651A",
+		TrustNonce: "470EBB30B09D48BE88D23138C3A1652B", Alg: "hmacSha256",
+		Digest: "D2F9C85155C79C24B9125E0F1633BF073A146837DE9238EC221C66D110A2749E",
 	}
 
 	// Test new announce signature - this will FAIL because method signature is wrong
@@ -390,7 +390,7 @@ func (suite *MdnsPairingInterfaceTestSuite) TestUsageExample() {
 			name: "Target-A",
 			txtRecord: &api.ShipPairingTXT{
 				TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-				ForId: "i:99001_u:MyDevice", ForPar: "DEVICE123", TrustId: "i:99101_u:Target-A", TrustPar: "TARGETA456",
+				ForId: "i:99001_u:MyDevice", ForPar: "B15F9772226DA10814154515BA57B28762191703D606CDEF5394A56F876452EF", TrustId: "i:99101_u:Target-A", TrustPar: "144BEB27067241B0D82ABEBF89EEDABC8AA609F3C94FF1B6CC3D29D53DDB36FE",
 				TrustNonce: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", Alg: "hmacSha256",
 				Digest: "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
 			},
@@ -399,8 +399,8 @@ func (suite *MdnsPairingInterfaceTestSuite) TestUsageExample() {
 			name: "Target-B",
 			txtRecord: &api.ShipPairingTXT{
 				TxtVers: "1", ParType: "fpSha256", Type: "addCu", TrustCurve: "secp256r1",
-				ForId: "i:99001_u:MyDevice", ForPar: "DEVICE123", TrustId: "i:99102_u:Target-B", TrustPar: "TARGETB789",
-				TrustNonce: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB2", Alg: "hmacSha256",
+				ForId: "i:99001_u:MyDevice", ForPar: "B15F9772226DA10814154515BA57B28762191703D606CDEF5394A56F876452EF", TrustId: "i:99102_u:Target-B", TrustPar: "966B7C166D15898C1CD41FF831D01A045F966B7D384FD0B49969734D3E28ACBB",
+				TrustNonce: "3A465DA39C4674A3C07BFC96BDD8CBB7", Alg: "hmacSha256",
 				Digest: "B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2",
 			},
 		},

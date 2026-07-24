@@ -385,8 +385,8 @@ func (s *DualServiceIntegrationSuite) Test_ListenerMode_HeatPumpScenario() {
 	// Simulate the heat pump listener mode scenario
 	// Heat pump listens for SMGW pairing announcements
 
-	heatPumpSKI := "heatpumpski12345"
-	smgwSKI := "smgwski67890"
+	heatPumpSKI := "36DEC539F32B8273FAB648125FCB1D0CF4C908982C7A390B68B57CC0E3085AB9"
+	smgwSKI := "4DF059BDF3F0E65AD068985AC783B5D0C5466C8302B5887492F2A75EFB56E1AD"
 
 	// Setup mock provider expectations for Start()
 	s.mockProvider.EXPECT().Start(api.PairingModeListener, true, mock.AnythingOfType("api.MdnsResolveCB")).Return(true).Once()
@@ -418,15 +418,15 @@ func (s *DualServiceIntegrationSuite) Test_ListenerMode_HeatPumpScenario() {
 	// SMGW announces pairing service targeting the heat pump
 	smgwPairingElements := map[string]string{
 		"txtvers":    "1",
-		"partype":    "fpSha256",                   // Type 1 pairing
-		"forid":      "HeatPump-Model-X",    // Target device ID
-		"forpar":     heatPumpSKI,           // Target heat pump's SKI
-		"trustid":    "SMGW-Pro-2000",       // SMGW's ID
-		"trustpar":   smgwSKI,               // SMGW's SKI
-		"trustcurve": "secp256r1",               // Elliptic curve
-		"type":       "addCu",               // Pairing offer
-		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4", // Random nonce
-		"alg":        "hmacSha256",               // HMAC algorithm
+		"partype":    "fpSha256",                                                         // Type 1 pairing
+		"forid":      "HeatPump-Model-X",                                                 // Target device ID
+		"forpar":     heatPumpSKI,                                                        // Target heat pump's SKI
+		"trustid":    "SMGW-Pro-2000",                                                    // SMGW's ID
+		"trustpar":   smgwSKI,                                                            // SMGW's SKI
+		"trustcurve": "secp256r1",                                                        // Elliptic curve
+		"type":       "addCu",                                                            // Pairing offer
+		"trustnonce": "BDCEE427FA7208DF3C1F2A749BA6F4D4",                                 // Random nonce
+		"alg":        "hmacSha256",                                                       // HMAC algorithm
 		"digest":     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25", // Computed digest
 	}
 
