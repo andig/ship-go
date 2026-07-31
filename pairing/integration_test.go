@@ -51,6 +51,8 @@ func TestIntegrationTestSuite(t *testing.T) {
 func (suite *IntegrationTestSuite) SetupTest() {
 	// Setup mock infrastructure
 	suite.mockMdns = mocks.NewMdnsPairingInterface(suite.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	suite.mockMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.mockCrypto = mocks.NewPairingCryptoInterface(suite.T())
 	suite.mockHistoryA = mocks.NewPairingHistoryProviderInterface(suite.T())
 	suite.mockHistoryZ = mocks.NewPairingHistoryProviderInterface(suite.T())
@@ -145,20 +147,21 @@ func (suite *IntegrationTestSuite) TestCompleteAnnouncerListenerFlow() {
 		ForId:      suite.devAService.ShipID(), // For heat pump
 		ForPar:     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
 		TrustId:    suite.devZService.ShipID(), // From SMGW
-		TrustPar:   "SMGW_FINGERPRINT",
+		TrustPar:   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
 		TrustCurve: api.CurveSecp256r1,
 		Type:       api.CommandTypeAddCU,
-		TrustNonce: "0102",
+		TrustNonce: "0102030405060708090A0B0C0D0E0F10",
 		Alg:        api.AlgorithmHMACSHA256,
-		Digest:     "AABB",
+		Digest:     "AABB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	// Setup listener validation mocks
-	suite.mockCrypto.EXPECT().ValidateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams"), []byte{0xAA, 0xBB}).Return(nil).Once()
-	suite.mockHistoryA.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, "AABB").Return(false).Once()
-	suite.mockHistoryA.EXPECT().RecordPairing(api.AlgorithmHMACSHA256, "AABB").Return().Once()
+	expectedDigestBytes, _ := hexToBytes(announcementTXT.Digest)
+	suite.mockCrypto.EXPECT().ValidateDigest(suite.sharedSecret, mock.AnythingOfType("api.HMACParams"), expectedDigestBytes).Return(nil).Once()
+	suite.mockHistoryA.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, announcementTXT.Digest).Return(false).Once()
+	suite.mockHistoryA.EXPECT().RecordPairing(api.AlgorithmHMACSHA256, announcementTXT.Digest).Return().Once()
 	// Note: ShouldAutoTrust removed - SHIP Pairing Service is autonomous
-	suite.mockHubA.EXPECT().OnPairingSuccess(suite.devZService.ShipID(), "SMGW_FINGERPRINT").Return().Once()
+	suite.mockHubA.EXPECT().OnPairingSuccess(suite.devZService.ShipID(), announcementTXT.TrustPar).Return().Once()
 
 	// devA processes the announcement
 	result := suite.listener.handleMdnsDiscovery(announcementTXT)

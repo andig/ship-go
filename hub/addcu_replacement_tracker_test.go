@@ -265,6 +265,52 @@ func (s *AddCuReplacementTrackerSuite) TestAddCuReplacementTracker_IsTracking() 
 	})
 }
 
+func (s *AddCuReplacementTrackerSuite) TestAddCuReplacementTracker_StopAll() {
+	s.Run("cancels the active timer and clears state", func() {
+		s.tracker = NewAddCuReplacementTrackerWithTimeout(50 * time.Millisecond)
+		shipID := "shutdown-device"
+
+		var fired atomic.Bool
+		s.tracker.StartTimer(shipID, func(expiredShipID string) {
+			fired.Store(true)
+		})
+		require.True(s.T(), s.tracker.IsTracking(shipID))
+
+		s.tracker.StopAll()
+
+		// State is cleared immediately
+		assert.False(s.T(), s.tracker.IsTracking(shipID))
+		assert.False(s.T(), s.tracker.IsInReplacementWindow())
+		assert.Empty(s.T(), s.tracker.pairedDeviceShipID)
+		assert.True(s.T(), s.tracker.disconnectionTime.IsZero())
+		assert.Nil(s.T(), s.tracker.timer)
+
+		// The callback must not fire after StopAll, even past the timeout
+		time.Sleep(120 * time.Millisecond)
+		assert.False(s.T(), fired.Load(), "timeout callback must not fire after StopAll")
+	})
+
+	s.Run("is a no-op when no timer is running", func() {
+		s.tracker = NewAddCuReplacementTrackerWithTimeout(5 * time.Second)
+
+		assert.NotPanics(s.T(), func() {
+			s.tracker.StopAll()
+		})
+		assert.False(s.T(), s.tracker.IsInReplacementWindow())
+	})
+
+	s.Run("is safe to call multiple times", func() {
+		s.tracker = NewAddCuReplacementTrackerWithTimeout(5 * time.Second)
+		s.tracker.StartTimer("multi-stopall", func(expiredShipID string) {})
+
+		assert.NotPanics(s.T(), func() {
+			s.tracker.StopAll()
+			s.tracker.StopAll()
+		})
+		assert.False(s.T(), s.tracker.IsInReplacementWindow())
+	})
+}
+
 func (s *AddCuReplacementTrackerSuite) TestAddCuReplacementTracker_IsInReplacementWindow() {
 	s.Run("returns true when replacement timer is active", func() {
 		s.tracker = NewAddCuReplacementTrackerWithTimeout(5 * time.Second)

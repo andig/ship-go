@@ -261,6 +261,21 @@ func (h *Hub) startPairingService() {
 	// Start SHIP pairing behavior based on configuration
 	switch pairingConfig.Mode {
 	case api.PairingModeListener, api.PairingModeBoth:
+		// Pairing spec §4.3: processing addCu-requests stays deactivated as
+		// long as the pairing with the trusted devZ is intended — a restart
+		// does not change that intent. With a trusted addCu device present
+		// (e.g. restored from persistence), the listener must not start:
+		// startAddCuReplacementTimersForOfflineDevices arms the §4.3 1.a
+		// replacement timer, whose expiry is the only sanctioned automatic
+		// reactivation, and a completed connection keeps processing off
+		// (§4.3 1.b.ii). Starting the listener here would also let a new
+		// request be evaluated and deferred during the replacement window,
+		// consuming its digest so the post-window re-evaluation would
+		// reject it as a replay.
+		if trusted := h.GetTrustedAddCuDevice(); trusted != nil {
+			logging.Log().Debug("pairing listener not started: trusted addCu device present", "shipID", trusted.ShipID())
+			break
+		}
 		if err := h.enablePairingListener(pairingConfig); err != nil {
 			logging.Log().Error("ship pairing listener failed to start:", err)
 			// Continue Hub startup - pairing is optional
@@ -275,6 +290,14 @@ func (h *Hub) startPairingService() {
 func (h *Hub) Shutdown() {
 	// Stop all announcement lifetime timers to prevent post-shutdown callbacks
 	h.announcementLifetimeTracker.StopAll()
+
+	// Stop any armed AddCu replacement timer for the same reason: a trusted
+	// addCu device that is offline at shutdown (e.g. armed at startup by
+	// startAddCuReplacementTimersForOfflineDevices, or by RegisterRemoteService)
+	// would otherwise fire handleAddCuReplacementTimeout up to 15 minutes later,
+	// reactivating the listener and calling into an already-torn-down pairing
+	// service and mDNS.
+	h.addCuReplacementTracker.StopAll()
 
 	// Cancel active announcements first
 	h.muxAnnouncements.Lock()
@@ -553,10 +576,19 @@ func (h *Hub) addService(service *api.ServiceDetails) bool {
 
 // remove a service from remote services
 //
+// Identifier comparison matches the lookup semantics of
+// ServiceForIdentifierFull: the SKI is normalized and the fingerprint is
+// compared case-insensitively.
+//
 // Parameters:
 //   - ski: The SKI (Subject Key Identifier) of the service. Required if fingerprint is not provided
 //   - fingerprint: The expected certificate fingerprint of the service. Required if SKI is not provided
 func (h *Hub) removeService(ski, fingerprint string) {
+	ski = util.NormalizeSKI(ski)
+	if ski == "" && fingerprint == "" {
+		return
+	}
+
 	h.muxReg.Lock()
 	defer h.muxReg.Unlock()
 
@@ -564,12 +596,32 @@ func (h *Hub) removeService(ski, fingerprint string) {
 		if ski != "" && service.SKI() != ski {
 			continue
 		}
-		if fingerprint != "" && service.Fingerprint() != fingerprint {
+		if fingerprint != "" && !strings.EqualFold(service.Fingerprint(), fingerprint) {
 			continue
 		}
 
 		h.remoteServices = append(h.remoteServices[:i], h.remoteServices[i+1:]...)
 		return
+	}
+}
+
+// removeServiceEntry removes the exact registry entry, regardless of which
+// identifiers it carries. Use this when the entry was already located via a
+// lookup — re-deriving it from identifiers can miss (or hit a different
+// entry) because lookups match more loosely than raw field comparison.
+func (h *Hub) removeServiceEntry(target *api.ServiceDetails) {
+	if target == nil {
+		return
+	}
+
+	h.muxReg.Lock()
+	defer h.muxReg.Unlock()
+
+	for i, service := range h.remoteServices {
+		if service == target {
+			h.remoteServices = append(h.remoteServices[:i], h.remoteServices[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -755,26 +807,9 @@ func (h *Hub) handleAddCuReplacementTimeout(expiredShipID string) {
 		return
 	}
 
+	// StartListening evaluates the currently-live pairing records itself, so
+	// reactivation needs no further replay step here.
 	h.reactivatePairingListener("AddCu device replacement timeout")
-
-	// Check for current pairing announcements
-	if mdnsPairing, ok := h.mdns.(api.MdnsPairingInterface); ok {
-		currentPairingServices, err := mdnsPairing.RequestPairingEntries()
-		if err != nil {
-			logging.Log().Error("Failed to request pairing entries during timeout", "error", err)
-		} else if len(currentPairingServices) > 0 {
-			// Process pending entries through active pairing listener if available
-			h.muxPairingListener.RLock()
-			listener := h.activePairingListener
-			h.muxPairingListener.RUnlock()
-
-			if listener != nil {
-				if err := listener.ProcessPendingEntries(currentPairingServices); err != nil {
-					logging.Log().Error("Failed to process pending pairing entries", "error", err, "expiredShipID", expiredShipID)
-				}
-			}
-		}
-	}
 }
 
 // reactivatePairingListener reactivates the pairing listener when AddCu replacement timeout occurs

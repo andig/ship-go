@@ -1461,14 +1461,14 @@ func (s *MdnsSuite) Test_SimulatePairingDiscovery_ValidTxtRecord() {
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "forDeviceId",
-		ForPar:     "forDeviceFingerprint",
+		ForPar:     "1FB322A400E64DC850E5BB0D8B2205B8A7E67FCB7F30DBAFFB34F4EFF56A1573",
 		TrustId:    "trustDeviceId",
-		TrustPar:   "trustDeviceFingerprint",
+		TrustPar:   "1DAA60D94A616837F827571AD3B167976FCC090373B8CF6D8CDF380AB367B1C1",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
-		TrustNonce: "0123456789abcdef0123456789abcdef",
+		TrustNonce: "3EB1BD439947EB762998E566CCC2E099",
 		Alg:        "hmacSha256",
-		Digest:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Digest:     "A8AE6E6EE929ABEA3AFCFC5258C8CCD6F85273E0D4626D26C7279F3250F77C8E",
 	}
 
 	// This should call processShipPairingMdnsEntry with the created elements map
@@ -1494,14 +1494,14 @@ func (s *MdnsSuite) Test_AnnouncePairingService_NilProvider() {
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "forDeviceId",
-		ForPar:     "forDeviceFingerprint",
+		ForPar:     "1FB322A400E64DC850E5BB0D8B2205B8A7E67FCB7F30DBAFFB34F4EFF56A1573",
 		TrustId:    "trustDeviceId",
-		TrustPar:   "trustDeviceFingerprint",
+		TrustPar:   "1DAA60D94A616837F827571AD3B167976FCC090373B8CF6D8CDF380AB367B1C1",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
-		TrustNonce: "0123456789abcdef0123456789abcdef",
+		TrustNonce: "3EB1BD439947EB762998E566CCC2E099",
 		Alg:        "hmacSha256",
-		Digest:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Digest:     "A8AE6E6EE929ABEA3AFCFC5258C8CCD6F85273E0D4626D26C7279F3250F77C8E",
 	}
 
 	instanceID, err := testManager.AnnouncePairingService(validTxtRecord)
@@ -1543,14 +1543,14 @@ func (s *MdnsSuite) Test_AnnouncePairingService_ProviderAnnounceFailure() {
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "forDeviceId",
-		ForPar:     "forDeviceFingerprint",
+		ForPar:     "1FB322A400E64DC850E5BB0D8B2205B8A7E67FCB7F30DBAFFB34F4EFF56A1573",
 		TrustId:    "trustDeviceId",
-		TrustPar:   "trustDeviceFingerprint",
+		TrustPar:   "1DAA60D94A616837F827571AD3B167976FCC090373B8CF6D8CDF380AB367B1C1",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
-		TrustNonce: "0123456789abcdef0123456789abcdef",
+		TrustNonce: "3EB1BD439947EB762998E566CCC2E099",
 		Alg:        "hmacSha256",
-		Digest:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Digest:     "A8AE6E6EE929ABEA3AFCFC5258C8CCD6F85273E0D4626D26C7279F3250F77C8E",
 	}
 
 	instanceID, err := s.sut.AnnouncePairingService(validTxtRecord)
@@ -1687,14 +1687,14 @@ func (s *MdnsSuite) Test_UnannouncePairingService_ProviderUnannounceFailure() {
 		TxtVers:    "1",
 		ParType:    "fpSha256",
 		ForId:      "forDeviceId",
-		ForPar:     "forDeviceFingerprint",
+		ForPar:     "1FB322A400E64DC850E5BB0D8B2205B8A7E67FCB7F30DBAFFB34F4EFF56A1573",
 		TrustId:    "trustDeviceId",
-		TrustPar:   "trustDeviceFingerprint",
+		TrustPar:   "1DAA60D94A616837F827571AD3B167976FCC090373B8CF6D8CDF380AB367B1C1",
 		TrustCurve: "secp256r1",
 		Type:       "addCu",
-		TrustNonce: "0123456789abcdef0123456789abcdef",
+		TrustNonce: "3EB1BD439947EB762998E566CCC2E099",
 		Alg:        "hmacSha256",
-		Digest:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Digest:     "A8AE6E6EE929ABEA3AFCFC5258C8CCD6F85273E0D4626D26C7279F3250F77C8E",
 	}
 	instanceID, err := s.sut.AnnouncePairingService(validTxtRecord)
 	assert.Nil(s.T(), err)
@@ -1851,14 +1851,14 @@ func (s *MdnsSuite) Test_ProcessShipPairingMdnsEntry_InvalidTxtvers() {
 		"txtvers":    "2", // Invalid version (not "1")
 		"partype":    "fpSha256",
 		"forid":      "forDeviceId",
-		"forpar":     "forDeviceFingerprint",
+		"forpar":     "1FB322A400E64DC850E5BB0D8B2205B8A7E67FCB7F30DBAFFB34F4EFF56A1573",
 		"trustid":    "trustDeviceId",
-		"trustpar":   "trustDeviceFingerprint",
+		"trustpar":   "1DAA60D94A616837F827571AD3B167976FCC090373B8CF6D8CDF380AB367B1C1",
 		"trustcurve": "secp256r1",
 		"type":       "addCu",
-		"trustnonce": "0123456789abcdef0123456789abcdef",
+		"trustnonce": "3EB1BD439947EB762998E566CCC2E099",
 		"alg":        "hmacSha256",
-		"digest":     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"digest":     "A8AE6E6EE929ABEA3AFCFC5258C8CCD6F85273E0D4626D26C7279F3250F77C8E",
 	}
 
 	serviceName := "test-service"
@@ -1983,6 +1983,12 @@ func (s *MdnsSuite) Test_reannounceWithNewInterfaces_PairingReannouncement() {
 		Type:       api.CommandTypeAddCU,
 		TrustCurve: api.CurveSecp256r1,
 		Alg:        api.AlgorithmHMACSHA256,
+		ForId:      "autofill-for-id",
+		ForPar:     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		TrustId:    "autofill-trust-id",
+		TrustPar:   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		TrustNonce: "BDCEE427FA7208DF3C1F2A749BA6F4D4",
+		Digest:     "BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25",
 	}
 
 	s.sut.reannounceWithNewInterfaces()

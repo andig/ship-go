@@ -2,7 +2,9 @@ package pairing
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -38,6 +40,8 @@ func TestListenerTestSuite(t *testing.T) {
 func (suite *ListenerTestSuite) SetupTest() {
 	// Setup fresh mocks for each test
 	suite.mockMdns = mocks.NewMdnsPairingInterface(suite.T())
+	// StartListening pulls the current record snapshot on its own goroutine
+	suite.mockMdns.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.mockCrypto = mocks.NewPairingCryptoInterface(suite.T())
 	suite.mockHistory = mocks.NewPairingHistoryProviderInterface(suite.T())
 	suite.mockHub = mocks.NewPairingHubInterface(suite.T())
@@ -374,9 +378,9 @@ func (suite *ListenerTestSuite) TestMdnsDiscovery_AlreadyPairedDevice() {
 	// Test that listener processes announcements from devices that may already be paired
 	// Note: Since we removed early rejection, the validation chain will run but may fail at HMAC if not valid
 	txtRecord := suite.createValidTestTXTRecord()
-	txtRecord.ForId = suite.localService.ShipID()                                           // For our device
-	txtRecord.TrustId = "i:46925_u:43652bk-2-gt1"                                           // Device requesting pairing
-	txtRecord.Digest = "INVALIDDIGEST789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Invalid to trigger failure
+	txtRecord.ForId = suite.localService.ShipID()                                         // For our device
+	txtRecord.TrustId = "i:46925_u:43652bk-2-gt1"                                         // Device requesting pairing
+	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" // Wrong value (valid format) to trigger HMAC failure
 
 	// Start listener to make it active
 	ctx := context.Background()
@@ -513,7 +517,7 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_NonceParsingFailure()
 	// Test nonce hex parsing failure
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
-	txtRecord.TrustNonce = "INVALID_HEX_XYZ" // Invalid hex
+	txtRecord.TrustNonce = "INVALID_HEX_XYZ" // Rejected by format validation (not 32 uppercase hex digits)
 
 	// Start listener
 	ctx := context.Background()
@@ -527,22 +531,22 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_NonceParsingFailure()
 		Return(nil).
 		Maybe()
 
-	// Mock failure notification for nonce parsing error
+	// Mock failure notification for the format validation error
 	suite.mockHub.EXPECT().
-		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidTXTRecord).
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, mock.Anything).
 		Return().
 		Maybe()
 
-	// Test - should fail nonce parsing and continue listening
+	// Test - should fail format validation and continue listening
 	result := suite.sut.handlePairingRequest(txtRecord)
-	assert.True(suite.T(), result, "should continue listening after nonce parsing failure")
+	assert.True(suite.T(), result, "should continue listening after nonce format rejection")
 }
 
 func (suite *ListenerTestSuite) TestValidatePairingRequest_DigestParsingFailure() {
 	// Test digest hex parsing failure
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
-	txtRecord.Digest = "INVALID_HEX_DIGEST_XYZ" // Invalid hex
+	txtRecord.Digest = "INVALID_HEX_DIGEST_XYZ" // Rejected by format validation (not 64 uppercase hex digits)
 
 	// Start listener
 	ctx := context.Background()
@@ -556,15 +560,15 @@ func (suite *ListenerTestSuite) TestValidatePairingRequest_DigestParsingFailure(
 		Return(nil).
 		Maybe()
 
-	// Mock failure notification for digest parsing error
+	// Mock failure notification for the format validation error
 	suite.mockHub.EXPECT().
-		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, api.ErrInvalidHMACDigest).
+		OnPairingFailure(txtRecord.TrustId, txtRecord.TrustPar, mock.Anything).
 		Return().
 		Maybe()
 
-	// Test - should fail digest parsing and continue listening
+	// Test - should fail format validation and continue listening
 	result := suite.sut.handlePairingRequest(txtRecord)
-	assert.True(suite.T(), result, "should continue listening after digest parsing failure")
+	assert.True(suite.T(), result, "should continue listening after digest format rejection")
 }
 
 func (suite *ListenerTestSuite) TestValidatePairingRequest_TrustEstablishmentFailure() {
@@ -593,9 +597,9 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_NewDeviceAfterTimeout
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                    // Different device ID
-	txtRecord.TrustPar = "ABCDEF123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Different fingerprint (valid hex)
-	txtRecord.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"    // New digest (valid hex)
+	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                   // Different device ID
+	txtRecord.TrustPar = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789" // Different fingerprint (valid format)
+	txtRecord.Digest = "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"   // New digest (valid hex)
 
 	// Mock existing AddCu device exists with different ShipID
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
@@ -649,8 +653,8 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_SameDeviceRepairing_S
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:88888_u:existing-device-id"                                       // Same device ID as existing
-	txtRecord.TrustPar = "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB" // Valid hex fingerprint
+	txtRecord.TrustId = "i:88888_u:existing-device-id"                                      // Same device ID as existing
+	txtRecord.TrustPar = "FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210" // Valid format fingerprint
 
 	// Mock existing AddCu device with same ShipID (re-pairing scenario)
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
@@ -705,9 +709,9 @@ func (suite *ListenerTestSuite) TestAddCuDeviceReplacement_FailedHMACValidation_
 	txtRecord := suite.createValidTestTXTRecord()
 	txtRecord.ForId = suite.localService.ShipID()
 	txtRecord.Type = api.CommandTypeAddCU
-	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                    // Different device
-	txtRecord.TrustPar = "ABCDEF123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB" // Valid hex fingerprint
-	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"    // Valid hex but will fail HMAC
+	txtRecord.TrustId = "i:99999_u:replacement-device-id"                                   // Different device
+	txtRecord.TrustPar = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789" // Valid format fingerprint
+	txtRecord.Digest = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"   // Valid hex but will fail HMAC
 
 	// Mock existing AddCu device
 	svc, _ := api.NewServiceDetails("", "FEDCBA987654321FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210AB", "i:88888_u:existing-device-id")
@@ -1203,6 +1207,88 @@ func (suite *ListenerTestSuite) TestProcessPendingEntries_ReplayAttack_ShouldDet
 	// Verify listener continues after detecting replay attack
 	status := suite.sut.GetListenerStatus()
 	assert.True(suite.T(), status.Active, "listener should continue after detecting replay attack")
+}
+
+/* StartListening snapshot replay tests */
+
+// These tests build their own mocks instead of using the suite's, because the
+// suite installs an open-ended RequestPairingEntries stub that would shadow
+// per-test expectations.
+
+func (suite *ListenerTestSuite) TestStartListening_EvaluatesCurrentRecords() {
+	// A record that arrived while no listener was active is only reachable
+	// through the snapshot pull — the browse callback for it already fired
+	// and will not fire again. StartListening must evaluate it itself.
+	mockMdns := mocks.NewMdnsPairingInterface(suite.T())
+	mockCrypto := mocks.NewPairingCryptoInterface(suite.T())
+	mockHistory := mocks.NewPairingHistoryProviderInterface(suite.T())
+	mockHub := mocks.NewPairingHubInterface(suite.T())
+	sut := NewPairingListener(mockMdns, mockCrypto, mockHistory, mockHub, suite.localService)
+
+	txtRecord := suite.createValidTestTXTRecord()
+	entries := map[string]*api.ShipPairingTXT{"live-announcement": txtRecord}
+
+	mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	mockMdns.EXPECT().RequestPairingEntries().Return(entries, nil).Once()
+
+	expectedDigestBytes, _ := hexToBytes(txtRecord.Digest)
+	mockCrypto.EXPECT().
+		ValidateDigest(
+			suite.testSecret,
+			mock.MatchedBy(func(params api.HMACParams) bool {
+				return params.Algorithm == api.AlgorithmHMACSHA256
+			}),
+			expectedDigestBytes).
+		Return(nil).
+		Once()
+	mockHistory.EXPECT().HasSeenDigest(api.AlgorithmHMACSHA256, txtRecord.Digest).Return(false).Once()
+	mockHistory.EXPECT().RecordPairing(api.AlgorithmHMACSHA256, txtRecord.Digest).Return().Once()
+
+	accepted := make(chan struct{})
+	mockHub.EXPECT().OnPairingSuccess(txtRecord.TrustId, txtRecord.TrustPar).Return().Once().
+		Run(func(mock.Arguments) { close(accepted) })
+
+	err := sut.StartListening(context.Background(), suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("snapshot record was not evaluated after StartListening")
+	}
+
+	assert.Eventually(suite.T(), func() bool {
+		return !sut.GetListenerStatus().Active
+	}, time.Second, 10*time.Millisecond, "listener should stop after accepting the snapshot record")
+}
+
+func (suite *ListenerTestSuite) TestStartListening_SnapshotReadError_KeepsListening() {
+	// The push subscription is already in place when the snapshot pull runs;
+	// a failed pull must not tear the listener down.
+	mockMdns := mocks.NewMdnsPairingInterface(suite.T())
+	mockCrypto := mocks.NewPairingCryptoInterface(suite.T())
+	mockHistory := mocks.NewPairingHistoryProviderInterface(suite.T())
+	mockHub := mocks.NewPairingHubInterface(suite.T())
+	sut := NewPairingListener(mockMdns, mockCrypto, mockHistory, mockHub, suite.localService)
+
+	mockMdns.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Once()
+	pulled := make(chan struct{})
+	mockMdns.EXPECT().RequestPairingEntries().Return(nil, errors.New("mdns not ready")).Once().
+		Run(func(mock.Arguments) { close(pulled) })
+
+	err := sut.StartListening(context.Background(), suite.testSecret)
+	assert.NoError(suite.T(), err)
+
+	select {
+	case <-pulled:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("StartListening did not read the record snapshot")
+	}
+
+	assert.True(suite.T(), sut.GetListenerStatus().Active,
+		"a failed snapshot read must not tear down the subscription")
+
+	assert.NoError(suite.T(), sut.StopListening())
 }
 
 /* Test Helper Functions */

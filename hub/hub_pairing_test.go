@@ -1282,6 +1282,11 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_ValidFingerprintFormats
 				assert.Equal(s.T(), fp, service.Fingerprint(), "Fingerprint should match")
 				assert.Equal(s.T(), testShipID, service.ShipID(), "ShipID should match")
 				assert.True(s.T(), service.Trusted(), "Service should be trusted")
+
+				// Close this device's replacement window (as a completed
+				// connection would) so the next iteration's pairing is not
+				// deferred by §4.3 1.a.
+				s.hub.StopAddCuReplacementTimer(service)
 			}
 		})
 	}
@@ -1323,6 +1328,10 @@ func (s *OnPairingSuccessTestSuite) TestOnPairingSuccess_FingerprintCaseSensitiv
 	// Assert - Service created with original fingerprint
 	service1 := s.hub.ServiceForIdentifier("", originalFingerprint)
 	assert.NotNil(s.T(), service1, "Service should be created with original fingerprint")
+
+	// Close the first device's replacement window (as a completed connection
+	// would) so the second pairing is not deferred by §4.3 1.a.
+	s.hub.StopAddCuReplacementTimer(service1)
 
 	// Act - Try to create service with different case fingerprint
 	s.hub.OnPairingSuccess(s.otherShipID, differentCaseFingerprint)
@@ -1507,6 +1516,8 @@ func (suite *HubPairingQRTestSuite) SetupTest() {
 	suite.mockHubReader = mocks.NewHubReaderInterface(suite.T())
 	suite.mockMdns = mocks.NewMdnsInterface(suite.T())
 	suite.mockPairing = mocks.NewMdnsPairingInterface(suite.T())
+	// A real listener pulls the current record snapshot on StartListening
+	suite.mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Create composite mock that implements both interfaces
 	suite.compositeMdns = &CompositeMdnsMock{
@@ -1762,6 +1773,7 @@ func (suite *QRAnnouncementTestSuite) SetupTest() {
 	// Setup common mock expectations for mDNS pairing operations
 	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().AnnouncePairingService(mock.Anything).Return("test-instance-id", nil).Maybe()
 	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().UnannouncePairingService(mock.AnythingOfType("string")).Return(nil).Maybe()
+	suite.mockMdnsInterface.MdnsPairingInterface.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Setup common mock expectations for mDNS start operation
 	suite.mockMdnsInterface.MdnsInterface.EXPECT().Start(mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -2319,6 +2331,7 @@ func (suite *EnablePairingListenerTestSuite) SetupTest() {
 
 	// Create composite mock for mDNS that supports pairing
 	mockPairing := mocks.NewMdnsPairingInterface(suite.T())
+	mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 	suite.compositeMdns = &CompositeMdnsMock{
 		MdnsInterface:        suite.mockMdns,
 		MdnsPairingInterface: mockPairing,
@@ -2543,6 +2556,7 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_WithRealP
 	// Add more mock expectations for the real pairing service startup
 	mockPairing := mocks.NewMdnsPairingInterface(suite.T())
 	mockPairing.EXPECT().SearchPairingServices(mock.AnythingOfType("func(*api.ShipPairingTXT) bool")).Return(nil).Maybe()
+	mockPairing.EXPECT().RequestPairingEntries().Return(map[string]*api.ShipPairingTXT{}, nil).Maybe()
 
 	// Create a new composite mock for this test with the additional expectations
 	compositeMdnsForTest := &CompositeMdnsMock{
@@ -2667,6 +2681,360 @@ func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_ReusesExi
 
 	// Verify mock expectations - CreateListener should NOT have been called
 	// This is implicitly verified by the mock framework since we didn't set that expectation
+}
+
+func (suite *EnablePairingListenerTestSuite) TestEnablePairingListener_AlreadyActiveIsSuccess() {
+	// An already-running listener satisfies a reactivation request — no error
+	suite.sut.pairingService = suite.mockPairingService
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockListener.EXPECT().
+		StartListening(mock.Anything, suite.validSecret).
+		Return(api.ErrListenerAlreadyActive).
+		Once()
+
+	err := suite.sut.enablePairingListener(suite.validConfig)
+
+	assert.NoError(suite.T(), err, "Already-active listener should not be reported as failure")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_AddCuRemovalReactivatesListener() {
+	// Pairing spec §4.3 item 2.b: user removal of the trusted addCu device
+	// reactivates the listener immediately, even when the caller-supplied
+	// identity carries no pairing type (e.g. built from the SKI alone).
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	service, err := api.NewServiceDetails("addcutestski", "", "addcu-ship-id")
+	suite.Require().NoError(err)
+	service.SetPairingType(api.PairingTypeAddCu)
+	service.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	// Pending replacement timer for the offline device must be cancelled too
+	suite.sut.addCuReplacementTracker.StartTimer("addcu-ship-id", func(string) {})
+	suite.Require().True(suite.sut.addCuReplacementTracker.IsTracking("addcu-ship-id"))
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	// Replaying announcements that arrived while the listener was deactivated
+	// is StartListening's own responsibility; the hub only has to reactivate.
+	listenerStarted := false
+	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
+		Run(func(mock.Arguments) { listenerStarted = true })
+
+	identity := api.NewServiceIdentity("addcutestski", "", "")
+	suite.Require().Equal(api.PairingTypeDefault, identity.PairingType)
+
+	suite.sut.UnregisterRemoteService(identity)
+
+	assert.True(suite.T(), listenerStarted,
+		"Listener should be reactivated when the trusted addCu device is removed")
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("addcu-ship-id"),
+		"Replacement timer should be stopped when the addCu device is removed")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_DefaultPairingDoesNotReactivate() {
+	// Removing a classically paired device must not touch the listener,
+	// regardless of what pairing type the caller puts on the identity.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	service, err := api.NewServiceDetails("defaulttestski", "", "default-ship-id")
+	suite.Require().NoError(err)
+	service.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
+
+	identity := api.NewServiceIdentity("defaulttestski", "", "")
+	identity.PairingType = api.PairingTypeAddCu
+
+	suite.sut.UnregisterRemoteService(identity)
+
+	suite.mockListener.AssertNotCalled(suite.T(), "StartListening", mock.Anything, mock.Anything)
+}
+
+func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_RemovesEntryWithLooselyMatchingIdentity() {
+	// The lookup matches with normalized SKI and case-insensitive fingerprint;
+	// removal must remove that same entry, not re-match on raw field equality.
+	service, err := api.NewServiceDetails("looseski01", "ABCDEF0123", "loose-ship-id")
+	suite.Require().NoError(err)
+	service.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
+
+	// Identifier spelling differs from the stored entry: un-normalized SKI
+	// (as scanned from a QR code or typed by a user), lower-cased fingerprint.
+	identity := api.ServiceIdentity{SKI: "LOOSE-SKI-01", Fingerprint: "abcdef0123"}
+
+	suite.sut.UnregisterRemoteService(identity)
+
+	assert.Nil(suite.T(), suite.sut.ServiceForIdentifier("looseski01", ""),
+		"Entry must be removed even when the identity spells identifiers differently")
+}
+
+func (suite *EnablePairingListenerTestSuite) Test_removeService_EmptyIdentifiersRemoveNothing() {
+	service, err := api.NewServiceDetails("keepski01", "", "keep-ship-id")
+	suite.Require().NoError(err)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	suite.sut.removeService("", "")
+
+	assert.Len(suite.T(), suite.sut.remoteServices, 1,
+		"Removal without identifiers must not delete an arbitrary entry")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestUnregisterRemoteService_AcceptedEntryNeverConnects_ArmsRecoveryTimer() {
+	// Field-observed race: trust removal replays the cache while the previous
+	// test run's announcements are still live; a request is accepted moments
+	// before its withdrawal and the device never connects. Without arming the
+	// replacement timer at acceptance, §4.3 1.a recovery never engages: the
+	// listener stays off and later announcements are never evaluated.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	oldDevice, err := api.NewServiceDetails("oldaddcuski", "", "sps-test-1")
+	suite.Require().NoError(err)
+	oldDevice.SetPairingType(api.PairingTypeAddCu)
+	oldDevice.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, oldDevice)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockHubReader.EXPECT().ServicePairingDetailUpdate(mock.Anything, mock.Anything).Return().Once()
+	// The real listener replays the still-live mDNS records inside
+	// StartListening, validates the request and accepts it; the announcement
+	// is withdrawn right after and the device never connects.
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
+		Run(func(mock.Arguments) {
+			suite.sut.OnPairingSuccess("sps-test-2", "63F25AF7")
+		})
+
+	suite.sut.UnregisterRemoteService(api.NewServiceIdentity("oldaddcuski", "", ""))
+
+	current := suite.sut.GetTrustedAddCuDevice()
+	suite.Require().NotNil(current, "Accepted request must establish trust")
+	suite.Require().Equal("sps-test-2", current.ShipID())
+
+	assert.True(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("sps-test-2"),
+		"Trust without a SHIP connection must arm the replacement window (§4.3 1.a) — "+
+			"otherwise a device that never connects leaves the listener off forever")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestOnPairingSuccess_NoConnection_TimerFiresAndReactivatesListener() {
+	// Pairing spec §4.3 1.a end to end: trust is established but no SHIP
+	// connection ever completes — when the replacement window expires, the
+	// listener must be reactivated so a replacement request can be evaluated.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+	suite.sut.addCuReplacementTracker = NewAddCuReplacementTrackerWithTimeout(30 * time.Millisecond)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	reactivated := make(chan struct{})
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once().
+		Run(func(mock.Arguments) { close(reactivated) })
+
+	suite.sut.OnPairingSuccess("sps-timer-1", "63F25AF7")
+
+	suite.Require().True(suite.sut.addCuReplacementTracker.IsTracking("sps-timer-1"),
+		"Trust without a SHIP connection must arm the replacement timer")
+
+	select {
+	case <-reactivated:
+	case <-time.After(2 * time.Second):
+		suite.T().Fatal("replacement timer expiry did not reactivate the pairing listener")
+	}
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("sps-timer-1"),
+		"Expired timer must clear the tracking state")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestOnPairingSuccess_ExistingConnection_DoesNotArmTimer() {
+	// A SHIP connection may already exist when the pairing request is
+	// accepted (connect-before-pair). The §4.3 1.a recovery timer must not
+	// be armed then — if that connection later closes without completing,
+	// HandleConnectionClosed arms the timer instead.
+	service, err := api.NewServiceDetails("connectedski0001", "ABCDEF0123456789", "sps-conn-1")
+	suite.Require().NoError(err)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, service)
+
+	mockConn := mocks.NewShipConnectionInterface(suite.T())
+	// Hub shutdown in teardown closes all registered connections
+	mockConn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	suite.sut.muxCon.Lock()
+	suite.sut.connections[service.SKI()] = mockConn
+	suite.sut.muxCon.Unlock()
+
+	suite.sut.OnPairingSuccess("sps-conn-1", "ABCDEF0123456789")
+
+	current := suite.sut.GetTrustedAddCuDevice()
+	suite.Require().NotNil(current, "Accepted request must establish trust")
+	suite.Require().Equal("sps-conn-1", current.ShipID())
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("sps-conn-1"),
+		"Recovery timer must not be armed while a connection object exists for the service")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestStartPairingService_TrustedAddCuPresent_ListenerNotStarted() {
+	// Pairing spec §4.3: a restart does not change devA's intent to continue
+	// the pairing with the trusted devZ, so processing addCu-requests must
+	// stay deactivated at startup. The §4.3 1.a replacement timer — not the
+	// listener — owns the reactivation. Starting the listener here would
+	// also let a new request be evaluated and deferred during the
+	// replacement window, consuming its digest so the post-window
+	// re-evaluation would reject it as a replay.
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	// addCu trust always carries a fingerprint (established from trustpar)
+	trustedDevice, err := api.NewServiceDetails("bootaddcuski", "AABBCCDD00112233", "boot-addcu-ship")
+	suite.Require().NoError(err)
+	trustedDevice.SetPairingType(api.PairingTypeAddCu)
+	trustedDevice.SetTrusted(true)
+	suite.sut.remoteServices = append(suite.sut.remoteServices, trustedDevice)
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockPairingService.EXPECT().Start().Return(nil).Once()
+
+	suite.sut.startPairingService()
+
+	suite.mockListener.AssertNotCalled(suite.T(), "StartListening", mock.Anything, mock.Anything)
+
+	// The startup sequence hands reactivation to the replacement timer
+	suite.sut.startAddCuReplacementTimersForOfflineDevices()
+	assert.True(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("boot-addcu-ship"),
+		"Offline trusted addCu device must be tracked by the replacement timer instead of an active listener")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestStartPairingService_NoTrustedAddCu_ListenerStarts() {
+	// Without a trusted addCu device the startup guard must not fire:
+	// processing addCu-requests is activated as configured (§4.2 rule 1).
+	suite.sut.pairingService = suite.mockPairingService
+	suite.sut.pairingConfig = suite.validConfig
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockPairingService.EXPECT().Start().Return(nil).Once()
+	suite.mockListener.EXPECT().StartListening(mock.Anything, suite.validSecret).Return(nil).Once()
+
+	suite.sut.startPairingService()
+}
+
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_TrustedAddCu_StopsListener() {
+	// Pairing spec §4.3: registering trust in an addCu device expresses the
+	// pairing intent, so processing addCu-requests must deactivate at
+	// registration — not only once a connection completes. Without this, the
+	// listener stays armed (indefinitely for an offline device) and a third
+	// devZ announcing a valid request would immediately replace the trust
+	// just registered, as no replacement window is armed on this path.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockListener.EXPECT().StopListening().Return(nil).Once()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "registeraddcuski",
+		Fingerprint: "AABBCCDD00112233",
+		ShipID:      "register-addcu-ship",
+		PairingType: api.PairingTypeAddCu,
+	})
+}
+
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_OfflineTrustedAddCu_ArmsReplacementTimer() {
+	// Registering an offline trusted addCu device deactivates the listener, but
+	// §4.3 1.a still requires an automatic reactivation path: after 15 minutes
+	// of no SHIP Message Exchange the listener must reopen. RegisterRemoteService
+	// therefore arms the replacement timer for the offline device, exactly as
+	// startAddCuReplacementTimersForOfflineDevices does on the startup path.
+	// Without it the device would stay deactivated indefinitely.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.mockListener.EXPECT().StopListening().Return(nil).Once()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "offlineaddcuski",
+		Fingerprint: "AABBCCDD00112233",
+		ShipID:      "offline-addcu-ship",
+		PairingType: api.PairingTypeAddCu,
+	})
+
+	assert.True(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("offline-addcu-ship"),
+		"Offline trusted addCu device must be tracked by the replacement timer so the listener reactivates after 15 min")
+}
+
+func (suite *EnablePairingListenerTestSuite) TestShutdown_CancelsArmedReplacementTimer() {
+	// A trusted addCu device that is offline at shutdown leaves the §4.3 1.a
+	// replacement timer armed. Shutdown must cancel it: otherwise
+	// handleAddCuReplacementTimeout would fire up to 15 minutes later on the
+	// torn-down Hub, reactivating the listener and calling into an
+	// already-shut-down pairing service and mDNS.
+	suite.sut.addCuReplacementTracker.StartTimer("offline-addcu-ship", suite.sut.handleAddCuReplacementTimeout)
+	require.True(suite.T(), suite.sut.addCuReplacementTracker.IsInReplacementWindow(),
+		"precondition: replacement timer must be armed")
+
+	suite.sut.Shutdown()
+
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsInReplacementWindow(),
+		"Shutdown must cancel the armed AddCu replacement timer")
+
+	// Prevent TearDownTest from calling Shutdown a second time
+	suite.sut = nil
+}
+
+func (suite *EnablePairingListenerTestSuite) TestRegisterRemoteService_AfterStart_DefaultPairing_ListenerUntouched() {
+	// Registering a traditional (non-addCu) service expresses no addCu
+	// pairing intent, so the listener must keep running.
+	suite.sut.muxStarted.Lock()
+	suite.sut.hasStarted = true
+	suite.sut.muxStarted.Unlock()
+
+	suite.sut.muxPairingListener.Lock()
+	suite.sut.activePairingListener = suite.mockListener
+	suite.sut.muxPairingListener.Unlock()
+
+	suite.sut.RegisterRemoteService(api.ServiceIdentity{
+		SKI:         "registerdefaultski",
+		Fingerprint: "00112233AABBCCDD",
+		ShipID:      "register-default-ship",
+		PairingType: api.PairingTypeDefault,
+	})
+
+	suite.mockListener.AssertNotCalled(suite.T(), "StopListening")
+	assert.False(suite.T(), suite.sut.addCuReplacementTracker.IsTracking("register-default-ship"),
+		"A traditional (non-addCu) registration must not arm the addCu replacement timer")
 }
 
 func (suite *HubPairingCompositionTestSuite) TestSetPairingService() {

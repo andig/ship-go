@@ -80,6 +80,9 @@ func (suite *ProviderExtensionTestSuite) TestMdnsManagerDualServiceSupport() {
 		Type:       api.CommandTypeAddCU,
 		Alg:        api.AlgorithmHMACSHA256,
 		Digest:     "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF",
+		ForPar:     "C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943",
+		TrustPar:   "2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4",
+		TrustNonce: "BDCEE427FA7208DF3C1F2A749BA6F4D4",
 	}
 
 	// With mock provider, should delegate correctly
@@ -97,12 +100,12 @@ func (suite *ProviderExtensionTestSuite) TestProviderMethodDelegation() {
 		TxtVers:    "1",
 		ParType:    api.ParTypeFPSHA256,
 		ForId:      "test-device",
-		ForPar:     "test-for-par",
+		ForPar:     "52CEAF55186DAB7E93F7D385E66819C16EEE47DE14DDFF0FEFFFA3D5A2EF18F2",
 		TrustId:    "test-announcer",
-		TrustPar:   "test-trust-par",
+		TrustPar:   "1E1BD0093E1F68FE59AA85E8B10842EAAB63177B81C835BA4EC69C8A8B6E4018",
 		TrustCurve: api.CurveSecp256r1,
 		Type:       api.CommandTypeAddCU,
-		TrustNonce: "test-nonce",
+		TrustNonce: "ED04C4E9EA6C49CF9CEB39098787C5B9",
 		Alg:        api.AlgorithmHMACSHA256,
 		Digest:     "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF",
 	}
