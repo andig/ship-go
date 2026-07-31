@@ -52,3 +52,15 @@ func (s *ConnectionLifecycleSuite) TestCloseConnection_StateComplete_3() {
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), model.SmeStateError, state)
 }
+
+// TC_SHIP_TERM_001: the announced close message must carry a valid SHIP
+// ConnectionCloseReasonType. Free-form caller strings (e.g. "User close") map to
+// the "unspecific" reason; valid enum values pass through unchanged.
+func TestValidCloseReason(t *testing.T) {
+	assert.Equal(t, model.ConnectionCloseReasonTypeUnspecific, validCloseReason("User close"))
+	assert.Equal(t, model.ConnectionCloseReasonTypeUnspecific, validCloseReason(""))
+	assert.Equal(t, model.ConnectionCloseReasonTypeUnspecific,
+		validCloseReason(string(model.ConnectionCloseReasonTypeUnspecific)))
+	assert.Equal(t, model.ConnectionCloseReasonTypeRemovedconnection,
+		validCloseReason(string(model.ConnectionCloseReasonTypeRemovedconnection)))
+}

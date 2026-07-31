@@ -1,6 +1,7 @@
 package ship
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 
@@ -13,6 +14,15 @@ import (
 
 func TestProClientSuite(t *testing.T) {
 	suite.Run(t, new(ProClientSuite))
+}
+
+// lastProtocolError decodes the last sent frame as a protocol handshake error
+// and returns its error type, for asserting the SHIP-mandated abort error codes.
+func (s *ProClientSuite) lastProtocolError() model.MessageProtocolHandshakeErrorErrorType {
+	_, data := s.sut.parseMessage(s.lastMessage(), true)
+	var msg model.MessageProtocolHandshakeError
+	_ = json.Unmarshal(data, &msg)
+	return msg.Error
 }
 
 type ProClientSuite struct {
@@ -153,6 +163,68 @@ func (s *ProClientSuite) Test_ListenChoice_Failures() {
 
 	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
 	assert.NotNil(s.T(), s.lastMessage())
+}
+
+// TC_SHIP_PROT_004: if the server does not reply with a select within the wait
+// timer, the client executes the common abort with error=1 (timeout) and closes.
+func (s *ProClientSuite) Test_ListenChoice_Timeout() {
+	s.sut.setState(model.SmeProtHStateClientListenChoice, nil)
+
+	s.sut.handleState(true, nil)
+
+	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
+	assert.Equal(s.T(), model.MessageProtocolHandshakeErrorErrorTypeTimeout, s.lastProtocolError())
+}
+
+// TC_SHIP_PROT_006: a valid SME message other than the expected select (here: an
+// announceMax) must trigger the common abort with error=2 (unexpected message),
+// as opposed to a malformed select which is a selection mismatch (error=3).
+func (s *ProClientSuite) Test_ListenChoice_UnexpectedMessage() {
+	s.sut.setState(model.SmeProtHStateClientListenChoice, nil)
+
+	protMsg := model.MessageProtocolHandshake{
+		MessageProtocolHandshake: model.MessageProtocolHandshakeType{
+			HandshakeType: model.ProtocolHandshakeTypeTypeAnnounceMax,
+			Version:       model.Version{Major: 1, Minor: 0},
+			Formats: model.MessageProtocolFormatsType{
+				Format: []model.MessageProtocolFormatType{model.MessageProtocolFormatTypeUTF8},
+			},
+		},
+	}
+
+	msg, err := s.sut.shipMessage(model.MsgTypeControl, protMsg)
+	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), msg)
+
+	s.sut.handleState(false, msg)
+
+	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
+	assert.Equal(s.T(), model.MessageProtocolHandshakeErrorErrorTypeUnexpectedMessage, s.lastProtocolError())
+}
+
+// TC_SHIP_PROT_006 (contrast): a select with an unsupported version/format is a
+// selection mismatch (error=3), not an unexpected message.
+func (s *ProClientSuite) Test_ListenChoice_SelectionMismatch() {
+	s.sut.setState(model.SmeProtHStateClientListenChoice, nil)
+
+	protMsg := model.MessageProtocolHandshake{
+		MessageProtocolHandshake: model.MessageProtocolHandshakeType{
+			HandshakeType: model.ProtocolHandshakeTypeTypeSelect,
+			Version:       model.Version{Major: 0, Minor: 1},
+			Formats: model.MessageProtocolFormatsType{
+				Format: []model.MessageProtocolFormatType{model.MessageProtocolFormatTypeUTF8},
+			},
+		},
+	}
+
+	msg, err := s.sut.shipMessage(model.MsgTypeControl, protMsg)
+	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), msg)
+
+	s.sut.handleState(false, msg)
+
+	assert.Equal(s.T(), model.SmeStateError, s.sut.getState())
+	assert.Equal(s.T(), model.MessageProtocolHandshakeErrorErrorTypeSelectionMismatch, s.lastProtocolError())
 }
 
 func (s *ProClientSuite) Test_Abort() {
