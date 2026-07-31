@@ -178,12 +178,15 @@ func TestHub_Shutdown_TimeoutStuckConnections(t *testing.T) {
 	stuckConn := mocks.NewShipConnectionInterface(t)
 	stuckConn.EXPECT().RemoteSKI().Return("stuckski").Maybe()
 
-	// This connection never completes closing
+	// This connection stays stuck until shutdown has been verified. Releasing it
+	// during cleanup prevents this test from leaking a goroutine into the rest
+	// of the package's race-detector run.
+	releaseClose := make(chan struct{})
+	defer close(releaseClose)
 	closeStarted := make(chan bool, 1)
 	stuckConn.EXPECT().CloseConnection(false, 0, mock.Anything).Run(func(safe bool, code int, reason string) {
 		closeStarted <- true
-		// Block forever
-		select {}
+		<-releaseClose
 	}).Once()
 
 	hub.connections["stuckski"] = stuckConn
