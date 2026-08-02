@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -15,7 +16,6 @@ import (
 	"github.com/enbility/ship-go/cert"
 	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/ship"
-	"github.com/enbility/ship-go/ws"
 	"github.com/gorilla/websocket"
 )
 
@@ -42,10 +42,13 @@ func (h *Hub) validateConnectionLimit() error {
 	return nil
 }
 
-// createWebSocketDialer creates a configured WebSocket dialer
-// This is a pure function that's easy to test
-func (h *Hub) createWebSocketDialer() *websocket.Dialer {
-	return &websocket.Dialer{
+// createWebSocketDialer creates a configured WebSocket dialer.
+//
+// When a dialState is passed, the raw socket of each attempt is handed to it so that an
+// incoming connection to the same SKI can abort this attempt synchronously — see
+// dialState and SHIP 12.2.2.
+func (h *Hub) createWebSocketDialer(state *dialState) *websocket.Dialer {
+	dialer := &websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
 		HandshakeTimeout: 5 * time.Second,
 		TLSClientConfig: &tls.Config{
@@ -57,6 +60,19 @@ func (h *Hub) createWebSocketDialer() *websocket.Dialer {
 		},
 		Subprotocols: []string{api.ShipWebsocketSubProtocol},
 	}
+
+	if state != nil {
+		dialer.NetDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			state.adopt(conn)
+			return conn, nil
+		}
+	}
+
+	return dialer
 }
 
 // validateRemoteCertificate validates the remote certificate and returns the SKI
@@ -112,8 +128,8 @@ func validateRemoteCertificate(remoteCerts []*x509.Certificate, expectedSKI, exp
 
 // establishWebSocketConnection creates and establishes a WebSocket connection
 // This is a focused function that handles the connection establishment details
-func (h *Hub) establishWebSocketConnection(host, port, path string) (*websocket.Conn, error) {
-	dialer := h.createWebSocketDialer()
+func (h *Hub) establishWebSocketConnection(host, port, path string, state *dialState) (*websocket.Conn, error) {
+	dialer := h.createWebSocketDialer(state)
 
 	hostPort := net.JoinHostPort(host, port)
 	address := fmt.Sprintf("wss://%s%s", hostPort, path)
@@ -121,6 +137,11 @@ func (h *Hub) establishWebSocketConnection(host, port, path string) (*websocket.
 	if err == nil {
 		defer resp.Body.Close()
 		return conn, nil
+	}
+
+	// an incoming connection took this attempt over, so do not open a second socket
+	if state != nil && state.wasSuperseded() {
+		return nil, err
 	}
 
 	// Try without path if the first attempt failed
@@ -136,15 +157,7 @@ func (h *Hub) establishWebSocketConnection(host, port, path string) (*websocket.
 // createShipConnection creates and initializes a SHIP connection
 // This is a focused function that handles SHIP connection setup
 func (h *Hub) createShipConnection(conn *websocket.Conn, remoteService *api.ServiceDetails) {
-	// Set read limit to prevent DoS attacks
-	conn.SetReadLimit(ws.MaxMessageSize)
-
-	dataHandler := ws.NewWebsocketConnection(conn, remoteService.SKI())
-	shipConnection := ship.NewConnectionHandler(h, dataHandler, ship.ShipRoleClient,
-		h.localService.ShipID(), remoteService.SKI(), remoteService.ShipID())
-	shipConnection.Run()
-
-	h.registerConnection(shipConnection)
+	h.startShipConnection(conn, remoteService, ship.ShipRoleClient)
 }
 
 // connectFoundService establishes a connection to another EEBUS service
@@ -155,14 +168,15 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 	// dial is already in flight. registerConnection only marks the SKI connected
 	// after the websocket dial and SHIP handshake, so without an in-flight guard
 	// two concurrent outgoing dials to the same SKI can both pass this check,
-	// both establish, and then tear each other down via keepThisConnection.
+	// both establish, and then displace each other in the registry.
+	state := newDialState()
 	if ski := remoteService.SKI(); ski != "" {
 		h.muxCon.Lock()
-		if _, connected := h.connections[ski]; connected || h.connectionsInitiating[ski] {
+		if _, connected := h.connections[ski]; connected || h.connectionsInitiating[ski] != nil {
 			h.muxCon.Unlock()
 			return nil
 		}
-		h.connectionsInitiating[ski] = true
+		h.connectionsInitiating[ski] = state
 		h.muxCon.Unlock()
 
 		defer func() {
@@ -180,8 +194,14 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 	logging.Log().Debugf("initiating connection to %s at %s:%s%s", remoteService.SKI(), host, port, path)
 
 	// Establish WebSocket connection
-	conn, err := h.establishWebSocketConnection(host, port, path)
+	conn, err := h.establishWebSocketConnection(host, port, path, state)
 	if err != nil {
+		// SHIP 12.2.2: an incoming connection took this attempt over while it was in
+		// flight. Not a failure - no retry, no backoff - as long as that connection
+		// actually establishes itself.
+		if state.wasSuperseded() {
+			return h.supersededDialResult(remoteService.SKI())
+		}
 		return err
 	}
 
@@ -213,16 +233,36 @@ func (h *Hub) connectFoundService(remoteService *api.ServiceDetails, host, port,
 			"ski", remoteService.SKI(), "fingerprint", remoteService.Fingerprint(), "error", mergeErr)
 	}
 
-	// Check for double connections
-	if !h.keepThisConnection(conn, false, remoteService) {
-		errorString := fmt.Sprintf("closing connection to %s: ignoring this connection", remoteService.SKI())
-		return errors.New(errorString)
+	// SHIP 12.2.2: an incoming connection took over while we were dialling. The
+	// handshake-time check already decided this connection loses.
+	if state.wasSuperseded() {
+		h.safeClose(conn, "superseded by incoming connection")
+		return h.supersededDialResult(remoteService.SKI())
+	}
+
+	// SHIP 12.2.2: if a connection to this SKI is already registered, the bigger SKI
+	// keeps the most recent one - which is what registerConnection does when it
+	// displaces the older connection.
+	if h.doubleConnectionAction(remoteService.SKI()) == dcPark {
+		logging.Log().Debug("double connection on the smaller-SKI side, keeping the most recent one for now", remoteService.SKI())
 	}
 
 	// Create and setup SHIP connection
 	h.createShipConnection(conn, remoteService)
 
 	return nil
+}
+
+// supersededDialResult reports how an outgoing dial that was retired for an incoming
+// connection ended: nil once that connection is registered, an error if it never got
+// there, so the usual retry path picks the SKI back up.
+func (h *Hub) supersededDialResult(remoteSKI string) error {
+	if h.awaitSupersedingConnection(remoteSKI) {
+		logging.Log().Debug("connection attempt superseded by an incoming connection", remoteSKI)
+		return nil
+	}
+
+	return fmt.Errorf("connection attempt to %s was superseded by an incoming connection that did not establish", remoteSKI)
 }
 
 // shouldAttemptConnection checks if a connection attempt should be made

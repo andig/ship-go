@@ -8,6 +8,7 @@ import (
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/mocks"
+	"github.com/enbility/ship-go/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -24,11 +25,13 @@ func TestConnectionRegistration_ConcurrentCloseAndReplace(t *testing.T) {
 		// Create two different connections
 		conn1 := mocks.NewShipConnectionInterface(t)
 		conn1.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn1.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn1.EXPECT().DataHandler().Return(nil).Maybe()
 		conn1.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		conn2 := mocks.NewShipConnectionInterface(t)
 		conn2.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn2.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn2.EXPECT().DataHandler().Return(nil).Maybe()
 		conn2.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
@@ -113,6 +116,7 @@ func TestUnregisterConnectionIfMatch(t *testing.T) {
 
 			conn := mocks.NewShipConnectionInterface(t)
 			conn.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+			conn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 
 			if tt.setupConn {
 				hub.registerConnection(conn)
@@ -161,6 +165,7 @@ func TestConcurrentConnectionOperations(t *testing.T) {
 
 		conn := mocks.NewShipConnectionInterface(t)
 		conn.EXPECT().RemoteSKI().Return(ski).Maybe()
+		conn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn.EXPECT().DataHandler().Return(nil).Maybe()
 		conn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 		connections[i] = conn

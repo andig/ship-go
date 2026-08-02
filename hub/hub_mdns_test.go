@@ -17,7 +17,7 @@ func newMdnsTestHub(mockMdns api.MdnsInterface) *Hub {
 		connections:              make(map[string]api.ShipConnectionInterface),
 		remoteServices:           make([]*api.ServiceDetails, 0),
 		connectionAttemptCounter: make(map[string]int),
-		connectionsInitiating:    make(map[string]bool),
+		connectionsInitiating:    make(map[string]*dialState),
 		connectionAttemptRunning: make(map[string]bool),
 		connectionDelayTimers:    make(map[string]*connectionDelayTimer),
 		knownMdnsEntries:         make([]*api.MdnsEntry, 0),

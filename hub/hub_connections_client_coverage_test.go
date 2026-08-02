@@ -23,6 +23,7 @@ import (
 	"github.com/enbility/ship-go/cert"
 	"github.com/enbility/ship-go/logging"
 	"github.com/enbility/ship-go/mocks"
+	"github.com/enbility/ship-go/model"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -884,183 +885,97 @@ func (s *HubConnectionsClientCoverageSuite) createDirectTestCertificate(expiryTi
 	return certificate
 }
 
-// Test_KeepThisConnection_DirectTest tests the keepThisConnection function directly
-// to ensure proper coverage of the double connection prevention logic
-func (s *HubConnectionsClientCoverageSuite) Test_KeepThisConnection_DirectTest() {
-	// Test case 1: No existing connection - should return true
-	s.Run("no_existing_connection", func() {
+// Test_DoubleConnectionResolution_DirectTest covers the SHIP 12.2.2 SKI comparison and
+// the registry swap it drives.
+//
+// SHIP 12.2.2: the node with the bigger SKI keeps the most recent connection and closes
+// all others; the node with the smaller SKI holds the duplicate back and gives the peer
+// 3 seconds. The direction a connection was opened in is deliberately not an input.
+func (s *HubConnectionsClientCoverageSuite) Test_DoubleConnectionResolution_DirectTest() {
+	s.Run("no_existing_connection_is_never_a_double_connection", func() {
+		s.hub.muxCon.Lock()
+		s.hub.connections = make(map[string]api.ShipConnectionInterface)
+		s.hub.muxCon.Unlock()
+
 		remoteService, _ := api.NewServiceDetails("testremoteski", "", "")
-		result := s.hub.keepThisConnection(nil, false, remoteService)
-		assert.True(s.T(), result, "Should keep connection when no existing connection")
+		assert.Equal(s.T(), dcAdopt, s.hub.doubleConnectionAction(remoteService.SKI()))
 	})
 
-	// Test case 2: Existing connection, outgoing request, local SKI > remote SKI - should return true and close existing
-	s.Run("outgoing_local_higher_ski", func() {
-		// Clean up connections first
+	s.Run("local_ski_higher_adopts_and_retires_the_older_connection", func() {
 		s.hub.muxCon.Lock()
 		s.hub.connections = make(map[string]api.ShipConnectionInterface)
 		s.hub.muxCon.Unlock()
 
-		// Set up local service with higher SKI
 		s.hub.localService, _ = api.NewServiceDetails("zzzhighlocalski", "", "")
 
-		remoteSKI := "aaalowremoteski"
-		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
-		normalizedRemoteSKI := remoteService.SKI() // Get the normalized SKI
+		remoteService, _ := api.NewServiceDetails("aaalowremoteski", "", "")
+		normalizedRemoteSKI := remoteService.SKI()
 
-		// Create and register existing connection
-		mockExistingConnection := &mocks.ShipConnectionInterface{}
-		mockExistingConnection.EXPECT().CloseConnection(false, 0, "").Once()
+		existing := &mocks.ShipConnectionInterface{}
+		existing.EXPECT().RemoteSKI().Return(normalizedRemoteSKI).Maybe()
+		existing.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
+		existing.EXPECT().CloseConnection(false, 4001, "double connection").Once()
 
 		s.hub.muxCon.Lock()
-		s.hub.connections[normalizedRemoteSKI] = mockExistingConnection // Use normalized SKI
+		s.hub.connections[normalizedRemoteSKI] = existing
 		s.hub.muxCon.Unlock()
 
-		// Call keepThisConnection
-		// For outgoing: keep = localSKI > remoteSKI
-		// Here: "zzzhighlocalski" > "aaalowremoteski" = true
-		s.T().Logf("Local SKI: %s, Remote SKI: %s", s.hub.localService.SKI(), remoteService.SKI())
-		result := s.hub.keepThisConnection(nil, false, remoteService)
+		assert.Equal(s.T(), dcAdopt, s.hub.doubleConnectionAction(normalizedRemoteSKI),
+			"the bigger SKI keeps the most recent connection")
 
-		// Should return true and remove the existing connection
-		assert.True(s.T(), result, "Should keep new connection when local SKI > remote SKI")
+		// registering the newer connection displaces and retires the older one
+		replacement := &mocks.ShipConnectionInterface{}
+		replacement.EXPECT().RemoteSKI().Return(normalizedRemoteSKI).Maybe()
+		replacement.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
+		s.hub.registerConnection(replacement)
 
-		// Verify existing connection was removed
 		s.hub.muxCon.RLock()
-		_, exists := s.hub.connections[normalizedRemoteSKI]
+		registered := s.hub.connections[normalizedRemoteSKI]
 		s.hub.muxCon.RUnlock()
-		assert.False(s.T(), exists, "Existing connection should be removed")
+		assert.Equal(s.T(), replacement, registered, "the most recent connection is the registered one")
 
-		// Wait a moment for the close goroutine to execute
-		time.Sleep(10 * time.Millisecond)
-	})
+		assert.Eventually(s.T(), func() bool {
+			return existing.AssertExpectations(&testing.T{})
+		}, time.Second, 10*time.Millisecond, "the displaced connection must be retired")
 
-	// Test case 3: Existing connection, outgoing request, local SKI < remote SKI - should return false
-	s.Run("outgoing_local_lower_ski_returns_false", func() {
-		// Clean up connections first
-		s.hub.muxCon.Lock()
-		s.hub.connections = make(map[string]api.ShipConnectionInterface)
-		s.hub.muxCon.Unlock()
-
-		// Set up local service with lower SKI
-		s.hub.localService, _ = api.NewServiceDetails("aaalowlocalski", "", "")
-
-		remoteSKI := "zzzhighremoteski"
-		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
-		normalizedRemoteSKI := remoteService.SKI() // Get the normalized SKI
-
-		// Create and register existing connection
-		mockExistingConnection := &mocks.ShipConnectionInterface{}
-
-		s.hub.muxCon.Lock()
-		s.hub.connections[normalizedRemoteSKI] = mockExistingConnection // Use normalized SKI
-		connectionCountBefore := len(s.hub.connections)
-		s.hub.muxCon.Unlock()
-
-		// Call keepThisConnection - this should return false
-		// For outgoing: keep = localSKI > remoteSKI
-		// Here: "aaalowlocalski" > "zzzhighremoteski" = false
-		result := s.hub.keepThisConnection(nil, false, remoteService)
-
-		// Should return false (don't keep the new connection)
-		assert.False(s.T(), result, "Should NOT keep new connection when local SKI < remote SKI for outgoing connection")
-
-		// Verify existing connection is still there
-		s.hub.muxCon.RLock()
-		connectionCountAfter := len(s.hub.connections)
-		existingConnection := s.hub.connections[normalizedRemoteSKI]
-		s.hub.muxCon.RUnlock()
-
-		assert.Equal(s.T(), connectionCountBefore, connectionCountAfter, "Connection count should remain the same")
-		assert.Equal(s.T(), mockExistingConnection, existingConnection, "Existing connection should remain unchanged")
-
-		// Clean up mock connection to avoid CloseConnection panic during Shutdown
 		s.hub.muxCon.Lock()
 		delete(s.hub.connections, normalizedRemoteSKI)
 		s.hub.muxCon.Unlock()
 	})
 
-	// Test case 4: Existing connection, incoming request, remote SKI > local SKI - should return true
-	s.Run("incoming_remote_higher_ski", func() {
-		// Clean up any existing connections first
+	s.Run("local_ski_lower_parks_and_leaves_the_existing_connection_alone", func() {
 		s.hub.muxCon.Lock()
 		s.hub.connections = make(map[string]api.ShipConnectionInterface)
 		s.hub.muxCon.Unlock()
 
-		// Set up local service with lower SKI
 		s.hub.localService, _ = api.NewServiceDetails("aaalowlocalski", "", "")
 
-		remoteSKI := "zzzhighremoteski"
-		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
-		normalizedRemoteSKI := remoteService.SKI() // Get the normalized SKI
+		remoteService, _ := api.NewServiceDetails("zzzhighremoteski", "", "")
+		normalizedRemoteSKI := remoteService.SKI()
 
-		// Create and register existing connection
-		mockExistingConnection := &mocks.ShipConnectionInterface{}
-		mockExistingConnection.EXPECT().CloseConnection(false, 0, "").Once()
+		existing := &mocks.ShipConnectionInterface{}
+		existing.EXPECT().RemoteSKI().Return(normalizedRemoteSKI).Maybe()
 
 		s.hub.muxCon.Lock()
-		s.hub.connections[normalizedRemoteSKI] = mockExistingConnection // Use normalized SKI
+		s.hub.connections[normalizedRemoteSKI] = existing
 		s.hub.muxCon.Unlock()
 
-		// Call keepThisConnection for incoming request
-		result := s.hub.keepThisConnection(nil, true, remoteService)
+		assert.Equal(s.T(), dcPark, s.hub.doubleConnectionAction(normalizedRemoteSKI),
+			"the smaller SKI waits for the peer instead of resolving the duplicate itself")
 
-		// Should return true (keep the new incoming connection)
-		assert.True(s.T(), result, "Should keep incoming connection when remote SKI > local SKI")
-
-		// Verify existing connection was removed
 		s.hub.muxCon.RLock()
-		_, exists := s.hub.connections[normalizedRemoteSKI]
+		registered := s.hub.connections[normalizedRemoteSKI]
 		s.hub.muxCon.RUnlock()
-		assert.False(s.T(), exists, "Existing connection should be removed")
+		assert.Equal(s.T(), existing, registered, "parking must not disturb the existing connection")
 
-		// Wait a moment for the close goroutine to execute
-		time.Sleep(10 * time.Millisecond)
-	})
-
-	// Test case 5: Existing connection, incoming request, remote SKI < local SKI - should return false
-	s.Run("incoming_remote_lower_ski_returns_false", func() {
-		// Clean up any existing connections first
-		s.hub.muxCon.Lock()
-		s.hub.connections = make(map[string]api.ShipConnectionInterface)
-		s.hub.muxCon.Unlock()
-
-		// Set up local service with higher SKI
-		s.hub.localService, _ = api.NewServiceDetails("zzzhighlocalski", "", "")
-
-		remoteSKI := "aaalowremoteski"
-		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
-		normalizedRemoteSKI := remoteService.SKI() // Get the normalized SKI
-
-		// Create and register existing connection
-		mockExistingConnection := &mocks.ShipConnectionInterface{}
-
-		s.hub.muxCon.Lock()
-		s.hub.connections[normalizedRemoteSKI] = mockExistingConnection // Use normalized SKI
-		connectionCountBefore := len(s.hub.connections)
-		s.hub.muxCon.Unlock()
-
-		// Call keepThisConnection for incoming request
-		// For incoming: keep = remoteSKI > localSKI
-		// Here: "aaalowremoteski" > "zzzhighlocalski" = false
-		result := s.hub.keepThisConnection(nil, true, remoteService)
-
-		// Should return false (don't keep the new incoming connection)
-		assert.False(s.T(), result, "Should NOT keep incoming connection when remote SKI < local SKI")
-
-		// Verify existing connection is still there
-		s.hub.muxCon.RLock()
-		connectionCountAfter := len(s.hub.connections)
-		existingConnection := s.hub.connections[normalizedRemoteSKI]
-		s.hub.muxCon.RUnlock()
-
-		assert.Equal(s.T(), connectionCountBefore, connectionCountAfter, "Connection count should remain the same")
-		assert.Equal(s.T(), mockExistingConnection, existingConnection, "Existing connection should remain unchanged")
-
-		// Clean up mock connection to avoid CloseConnection panic during Shutdown
 		s.hub.muxCon.Lock()
 		delete(s.hub.connections, normalizedRemoteSKI)
 		s.hub.muxCon.Unlock()
+	})
+
+	s.Run("decision_is_independent_of_direction", func() {
+		assert.Equal(s.T(), dcAdopt, resolveDoubleConnection("ff", "00"))
+		assert.Equal(s.T(), dcPark, resolveDoubleConnection("00", "ff"))
 	})
 }
 
@@ -1886,25 +1801,25 @@ func (s *ConnectFoundServiceUnitTestSuite) TestConnectFoundService_FingerprintBa
 
 func (s *ConnectFoundServiceUnitTestSuite) TestConnectFoundService_ServiceDetailsUpdatesFromConnection() {
 	// Test that ServiceDetails registry gets updated when connection discovers new information
-	
+
 	// Setup - Create service with only SKI (simulating SKI-only registration)
 	skiOnlyService, _ := api.NewServiceDetails(s.testSKI, "", "")
 	success := s.hub.addService(skiOnlyService)
 	require.True(s.T(), success, "Should add SKI-only service")
-	
+
 	// Verify initial state - fingerprint should be empty
 	initialService := s.hub.ServiceForIdentifier(s.testSKI, "")
 	require.NotNil(s.T(), initialService, "Service should exist")
 	assert.Equal(s.T(), s.testSKI, initialService.SKI(), "SKI should be set")
 	assert.Equal(s.T(), "", initialService.Fingerprint(), "Fingerprint should be empty initially")
 	assert.Equal(s.T(), "", initialService.ShipID(), "ShipID should be empty initially")
-	
+
 	// Note: This test documents the expected behavior for registry updates
 	// In a real connection scenario with valid certificates:
 	// 1. TLS validation would call remoteService.SetFingerprint() if empty
 	// 2. SHIP handshake would call ReportServiceShipID() which updates registry
 	// 3. Final ServiceDetails would have complete identification data
-	
+
 	// The actual connection will fail due to test environment, but this documents
 	// the intended behavior for ServiceDetails registry updates
 	err := s.hub.connectFoundService(skiOnlyService, "127.0.0.1", "19999", "/ship")
@@ -2142,7 +2057,7 @@ func (s *ConnectFoundServiceUnitTestSuite) TestConnectFoundService_DoubleConnect
 	// Test that double connection handling is invoked
 	// Note: Detailed double connection logic is tested elsewhere
 
-	// This test verifies that connectFoundService calls keepThisConnection
+	// This test verifies that connectFoundService reaches the double connection check
 	// The actual double connection logic is complex and tested in other files
 
 	// Setup - Create service
@@ -2205,7 +2120,7 @@ func (s *ConnectFoundServiceUnitTestSuite) TestConnectFoundService_DoubleConnect
 	// Assert - Should fail during WebSocket establishment
 	assert.Error(s.T(), err, "Should fail during WebSocket establishment")
 
-	// Double connection check (keepThisConnection) is only called if WebSocket succeeds
+	// The double connection check is only reached if the WebSocket dial succeeds
 }
 
 func (s *ConnectFoundServiceUnitTestSuite) TestConnectFoundService_ConnectionFlowSequence() {

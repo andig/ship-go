@@ -9,14 +9,16 @@ import (
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/mocks"
+	"github.com/enbility/ship-go/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// TestKeepConnectionTOCTOURaceFix tests that the TOCTOU race condition in keepThisConnection is fixed
+// TestKeepConnectionTOCTOURaceFix tests that the double connection decision and the
+// registry swap stay atomic under contention
 func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 	t.Run("atomic_connection_removal", func(t *testing.T) {
-		// This test verifies that the connection removal in keepThisConnection is atomic
+		// This test verifies that displacing a connection in the registry is atomic
 		// and prevents the TOCTOU race condition
 
 		mockHubReader := mocks.NewHubReaderInterface(t)
@@ -36,14 +38,16 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		// Create mock connections
 		oldConn := mocks.NewShipConnectionInterface(t)
 		oldConn.EXPECT().RemoteSKI().Return(remoteSKI).Maybe()
+		oldConn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		oldConn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		newConn := mocks.NewShipConnectionInterface(t)
 		newConn.EXPECT().RemoteSKI().Return(remoteSKI).Maybe()
+		newConn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		newConn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		var operationsCompleted atomic.Int32
-		var keepResults []bool
+		var keepResults []doubleConnectionAction
 		var keepResultsMux sync.Mutex
 
 		const numIterations = 1000
@@ -59,13 +63,13 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 				operationsCompleted.Add(1)
 			}()
 
-			// Goroutine 2: Call keepThisConnection (should remove old connection atomically)
+			// Goroutine 2: resolve the double connection concurrently
 			go func() {
 				defer wg.Done()
-				keep := hub.keepThisConnection(nil, true, remoteService)
+				action := hub.doubleConnectionAction(remoteService.SKI())
 
 				keepResultsMux.Lock()
-				keepResults = append(keepResults, keep)
+				keepResults = append(keepResults, action)
 				keepResultsMux.Unlock()
 
 				operationsCompleted.Add(1)
@@ -86,19 +90,18 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		// All operations should complete
 		assert.Equal(t, int32(numIterations*3), operationsCompleted.Load())
 
-		// keepThisConnection should consistently return true (remote SKI is higher)
+		// the remote SKI is higher, so once a connection is registered this node parks
+		// rather than adopting (SHIP 12.2.2)
 		keepResultsMux.Lock()
-		trueCount := 0
+		adoptCount := 0
 		for _, result := range keepResults {
-			if result {
-				trueCount++
+			if result == dcAdopt {
+				adoptCount++
 			}
 		}
 		keepResultsMux.Unlock()
 
-		// Most results should be true (remote SKI wins), but some might be false
-		// if no existing connection was found
-		t.Logf("keepThisConnection returned true %d/%d times", trueCount, len(keepResults))
+		t.Logf("adopted %d/%d times (the rest parked)", adoptCount, len(keepResults))
 
 		hub.Shutdown()
 	})
@@ -125,6 +128,7 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 		for i := range mockConns {
 			mockConns[i] = mocks.NewShipConnectionInterface(t)
 			mockConns[i].EXPECT().RemoteSKI().Return(remoteSKI).Maybe()
+			mockConns[i].EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 			mockConns[i].EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 		}
 
@@ -142,10 +146,10 @@ func TestKeepConnectionTOCTOURaceFix(t *testing.T) {
 				hub.registerConnection(conn)
 			}(mockConns[connIndex])
 
-			// Keep connection check
+			// double connection check
 			go func() {
 				defer wg.Done()
-				hub.keepThisConnection(nil, true, remoteService)
+				hub.doubleConnectionAction(remoteService.SKI())
 			}()
 
 			// Unregister

@@ -18,8 +18,7 @@ import (
 // TestConnectionDelayRaceConditions tests for race conditions in connection delay and double connection prevention
 func TestConnectionDelayRaceConditions(t *testing.T) {
 	t.Run("double_connection_prevention_race", func(t *testing.T) {
-		// Test the race condition in keepThisConnection where existingC could change
-		// between lookup and action
+		// Test the race between the double connection decision and registration
 
 		// Create test hub with minimal setup
 		mockHubReader := mocks.NewHubReaderInterface(t)
@@ -57,13 +56,10 @@ func TestConnectionDelayRaceConditions(t *testing.T) {
 				operationCount.Add(1)
 			}()
 
-			// Goroutine 2: Check for double connection (incoming)
+			// Goroutine 2: Check for double connection
 			go func() {
 				defer wg.Done()
-				keep := hub.keepThisConnection(nil, true, remoteService)
-				if !keep {
-					t.Log("expected to keep for higher remoteSKI")
-				}
+				hub.doubleConnectionAction(remoteService.SKI())
 				operationCount.Add(1)
 			}()
 

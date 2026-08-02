@@ -112,7 +112,7 @@ func (s *HubConnectionsDecomposedTestSuite) Test_ValidateConnectionLimit() {
 
 // Test createWebSocketDialer function
 func (s *HubConnectionsDecomposedTestSuite) Test_CreateWebSocketDialer() {
-	dialer := s.hub.createWebSocketDialer()
+	dialer := s.hub.createWebSocketDialer(nil)
 
 	assert.NotNil(s.T(), dialer)
 	assert.Equal(s.T(), 5*time.Second, dialer.HandshakeTimeout)
