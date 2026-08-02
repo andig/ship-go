@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -174,6 +175,76 @@ func (s *WebsocketSuite) TestCloseWithError() {
 	isClosed, err = s.sut.IsDataConnectionClosed()
 	assert.Equal(s.T(), true, isClosed)
 	assert.NotNil(s.T(), err)
+}
+
+// A write deadline stays armed on the socket after the write it was set for, and only a
+// SHIP message or the 50s keepalive ping refreshes it. An established connection idle for
+// longer than writeWait therefore sits with an elapsed one - and a write under an elapsed
+// deadline fails instantly, which gorilla latches, taking the connection down for good.
+func (s *WebsocketSuite) TestWriteOnIdleConnection() {
+	s.sut.muxConWrite.Lock()
+	err := s.sut.conn.SetWriteDeadline(time.Now().Add(-time.Second))
+	s.sut.muxConWrite.Unlock()
+	assert.NoError(s.T(), err)
+
+	assert.NoError(s.T(), s.sut.writeMessageWithoutErrorHandling(websocket.BinaryMessage, []byte{0, 0}),
+		"a write must not fail just because the connection had been idle")
+	assert.NoError(s.T(), s.sut.writeMessageWithoutErrorHandling(websocket.BinaryMessage, []byte{0, 0}),
+		"and it must not have latched an error that breaks every write after it")
+
+	isClosed, _ := s.sut.IsDataConnectionClosed()
+	assert.False(s.T(), isClosed)
+}
+
+// The close frame is the write most exposed to an elapsed deadline: it is sent on a
+// connection that has usually been quiet for a while. Losing it turns a clean close into
+// an abnormal one, so the peer sees 1006 "unexpected EOF" instead of the code and reason
+// it was given - which is the difference between a peer that knows why the connection
+// went away and one that has to guess.
+func TestCloseFrameOnIdleConnection(t *testing.T) {
+	peerEnd := make(chan error, 1)
+
+	server, resp, clientConn := newWSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader.CheckOrigin = func(r *http.Request) bool { return true }
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				peerEnd <- err
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	defer resp.Body.Close()
+
+	reader := mocks.NewWebsocketDataReaderInterface(t)
+	reader.EXPECT().HandleIncomingWebsocketMessage(mock.Anything).Maybe()
+	reader.EXPECT().ReportConnectionError(mock.Anything).Maybe()
+
+	sut := NewWebsocketConnection(clientConn, "test-ski")
+	sut.InitDataProcessing(reader)
+
+	// what the socket looks like once writeWait has passed since the last write
+	sut.muxConWrite.Lock()
+	require.NoError(t, sut.conn.SetWriteDeadline(time.Now().Add(-time.Second)))
+	sut.muxConWrite.Unlock()
+
+	sut.CloseDataConnection(4001, "double connection")
+
+	select {
+	case err := <-peerEnd:
+		var closeErr *websocket.CloseError
+		require.ErrorAs(t, err, &closeErr, "the peer must receive the close frame, got: %v", err)
+		assert.Equal(t, 4001, closeErr.Code)
+		assert.Equal(t, "double connection", closeErr.Text)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the peer never saw the connection end")
+	}
 }
 
 var upgrader = websocket.Upgrader{}

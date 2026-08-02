@@ -120,10 +120,6 @@ func (w *WebsocketConnection) writeShipPump() {
 				return
 			}
 
-			w.muxConWrite.Lock()
-			_ = w.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			w.muxConWrite.Unlock()
-
 			if !w.writeMessage(websocket.BinaryMessage, message) {
 				return
 			}
@@ -142,9 +138,6 @@ func (w *WebsocketConnection) handlePing() {
 		return
 	}
 
-	w.muxConWrite.Lock()
-	_ = w.conn.SetWriteDeadline(time.Now().Add(writeWait))
-	w.muxConWrite.Unlock()
 	_ = w.writeMessage(websocket.PingMessage, nil)
 }
 
@@ -320,6 +313,13 @@ func (w *WebsocketConnection) writeMessageWithoutErrorHandling(messageType int, 
 
 	w.muxConWrite.Lock()
 	defer w.muxConWrite.Unlock()
+
+	// Every write needs its own deadline. A deadline stays armed on the socket after the
+	// write it was set for, so a connection that has been idle for longer than writeWait
+	// fails its next write with "i/o timeout" - and gorilla latches write errors, which
+	// takes the connection down for good. Setting it here rather than at each call site
+	// keeps that guarantee for pings and close frames too, not just SHIP messages.
+	_ = w.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 	return w.conn.WriteMessage(messageType, data)
 }
