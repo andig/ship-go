@@ -80,35 +80,6 @@ func (s *HubConnectionsServerSuite) AfterTest(suiteName, testName string) {
 	s.sut.Shutdown()
 }
 
-func (s *HubConnectionsServerSuite) Test_SendWSCloseMessage() {
-	req := httptest.NewRequest("GET", "http://example.com/foo", nil)
-	w := httptest.NewRecorder()
-	s.sut.ServeHTTP(w, req)
-
-	server := httptest.NewServer(s.sut)
-	wsURL := strings.ReplaceAll(server.URL, "http://", "ws://")
-
-	// Connect to the server
-	con, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	assert.Nil(s.T(), err)
-
-	ski := "12af9e"
-	localService, _ := api.NewServiceDetails(ski, "", "")
-
-	hub, err := newTestHub(s.hubReader, s.mdnsService, 4567, tls.Certificate{}, localService, nil)
-	assert.NotNil(s.T(), hub)
-	assert.NoError(s.T(), err)
-
-	hub.sendWSCloseMessage(con)
-
-	resp.Body.Close()
-	_ = con.Close()
-	server.CloseClientConnections()
-	server.Close()
-
-	time.Sleep(time.Second)
-}
-
 func (s *HubConnectionsServerSuite) Test_ServeHTTP_01() {
 	req := httptest.NewRequest("GET", "http://example.com/foo", nil)
 	w := httptest.NewRecorder()

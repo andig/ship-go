@@ -46,7 +46,40 @@ func (h *Hub) verifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x509.
 		cert.LogCertificateExpiration(validCert, certSKI)
 	}
 
+	// SHIP 12.2.2: "The SHIP node with the greater SKI SHOULD check for double
+	// connections directly during the TLS handshake." This is the earliest point at
+	// which the peer is known, and it is early enough to retire an in-flight outgoing
+	// connection attempt before this handshake completes.
+	//
+	// This hook never rejects the incoming connection - it only retires the older one.
+	//
+	// Note that "before the handshake completes" only holds under TLS 1.2, which SHIP 9
+	// mandates: in TLS 1.3 the client is done as soon as it has sent its Finished, which
+	// is before the server processes the client certificate and reaches this callback.
+	// Against a peer that negotiates TLS 1.3 the older connection is still retired, just
+	// not necessarily before the peer considers its handshake complete.
+	remoteSKI := util.NormalizeSKI(certSKI)
+	if resolveDoubleConnection(h.localService.SKI(), remoteSKI) == dcAdopt {
+		h.supersedeForIncoming(remoteSKI)
+	}
+
 	return nil
+}
+
+// isDoubleConnectionRequest reports whether an incoming request comes from a SKI that
+// already has a connection, i.e. whether it is a double connection in the sense of
+// SHIP 12.2.2 rather than an additional peer.
+func (h *Hub) isDoubleConnectionRequest(r *http.Request) bool {
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		return false
+	}
+
+	ski, err := cert.SkiFromCertificate(r.TLS.PeerCertificates[0])
+	if err != nil {
+		return false
+	}
+
+	return h.isSkiConnected(util.NormalizeSKI(ski))
 }
 
 // startWebsocketServer starts the SHIP websocket server
@@ -83,13 +116,17 @@ func (h *Hub) startWebsocketServer() error {
 
 // ServeHTTP handles incoming HTTP connection requests
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Check connection limit before accepting new connections
+	// Check connection limit before accepting new connections.
+	//
+	// A second connection from a SKI we are already connected to is exempt: it replaces
+	// the existing one rather than adding to the total, and SHIP 12.2.2 requires such a
+	// double connection to be resolved by SKI comparison, not rejected on capacity.
 	h.muxCon.RLock()
 	currentConnections := len(h.connections)
 	maxConnections := h.maxConnections
 	h.muxCon.RUnlock()
 
-	if currentConnections >= maxConnections {
+	if currentConnections >= maxConnections && !h.isDoubleConnectionRequest(r) {
 		logging.Log().Debug("connection limit reached, rejecting new connection", currentConnections, maxConnections)
 		http.Error(w, "Connection limit reached", http.StatusServiceUnavailable)
 		return
@@ -171,16 +208,12 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.hubReader.ServicePairingDetailUpdate(pairingIdentity, connectionStateDetail)
 	}
 
-	// don't allow a second connection
-	if !h.keepThisConnection(conn, true, service) {
-		h.safeClose(conn, "double connection rejected")
-		return
+	// SHIP 12.2.2: if this is a second connection to the same SKI, the node with the
+	// bigger SKI keeps the most recent one and closes the others - which is what
+	// registerConnection does when it displaces the older connection.
+	if h.doubleConnectionAction(service.SKI()) == dcPark {
+		logging.Log().Debug("double connection on the smaller-SKI side, keeping the most recent one for now", service.SKI())
 	}
 
-	dataHandler := ws.NewWebsocketConnection(conn, service.SKI())
-	shipConnection := ship.NewConnectionHandler(h, dataHandler, ship.ShipRoleServer,
-		h.localService.ShipID(), service.SKI(), service.ShipID())
-	shipConnection.Run()
-
-	h.registerConnection(shipConnection)
+	h.startShipConnection(conn, service, ship.ShipRoleServer)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/mocks"
+	"github.com/enbility/ship-go/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -187,59 +188,65 @@ func TestPrepareConnectionInitiationCounterMismatch(t *testing.T) {
 	// The key is that the function returns early due to counter mismatch
 }
 
-// TestDoubleConnectionPreventionEdgeCases tests specific scenarios in
-// keepThisConnection logic
+// TestDoubleConnectionPreventionEdgeCases covers the SHIP 12.2.2 SKI comparison at the
+// hub level. Note that the connection direction is not an input: the bigger SKI adopts
+// the most recent connection, the smaller SKI parks it and waits for the peer.
 func TestDoubleConnectionPreventionEdgeCases(t *testing.T) {
-	// Test case 1: Local SKI > Remote SKI, outgoing connection
+	// Test case 1: no connection registered yet, so nothing to resolve
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService, _ = api.NewServiceDetails("zzzlocalski", "", "") // Higher than remote
+		hub.localService, _ = api.NewServiceDetails("zzzlocalski", "", "")
 		hub.Start()
 		defer hub.Shutdown()
 
-		remoteSKI := "aaaremoteski"
-		remoteService, _ := api.NewServiceDetails(remoteSKI, "", "")
+		remoteService, _ := api.NewServiceDetails("aaaremoteski", "", "")
 
-		// For outgoing connection, we should keep it (local > remote)
-		shouldKeep := hub.keepThisConnection(nil, false, remoteService)
-		assert.True(t, shouldKeep, "should keep outgoing connection when local SKI > remote SKI")
+		assert.Equal(t, dcAdopt, hub.doubleConnectionAction(remoteService.SKI()),
+			"a first connection is never a double connection")
 	}
 
-	// Test case 2: Local SKI < Remote SKI, incoming connection
+	// Test case 2: local SKI is smaller, so this node has to wait for the peer
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService, _ = api.NewServiceDetails("aaalocalski", "", "") // Lower than remote
+		hub.localService, _ = api.NewServiceDetails("aaalocalski", "", "")
 		hub.Start()
 		defer hub.Shutdown()
 
-		remoteService, _ := api.NewServiceDetails("zzzremoteski", "", "")
+		remoteSKI := "zzzremoteski"
+		existingConn := mocks.NewShipConnectionInterface(t)
+		existingConn.EXPECT().RemoteSKI().Return(remoteSKI).Maybe()
 
-		// For incoming connection, we should keep it (remote > local)
-		shouldKeep := hub.keepThisConnection(nil, true, remoteService)
-		assert.True(t, shouldKeep, "should keep incoming connection when remote SKI > local SKI")
+		hub.muxCon.Lock()
+		hub.connections[remoteSKI] = existingConn
+		hub.muxCon.Unlock()
+
+		assert.Equal(t, dcPark, hub.doubleConnectionAction(remoteSKI),
+			"SHIP 12.2.2: the smaller SKI gives the peer 3s to resolve the duplicate")
+
+		hub.muxCon.Lock()
+		delete(hub.connections, remoteSKI)
+		hub.muxCon.Unlock()
 	}
 
-	// Test case 3: Existing connection scenario
+	// Test case 3: local SKI is bigger, so this node resolves it immediately
 	{
 		hub := setupTestHubForTimer(t)
-		hub.localService, _ = api.NewServiceDetails("zzzhighski", "", "") // Higher than existing
+		hub.localService, _ = api.NewServiceDetails("zzzhighski", "", "")
 		hub.Start()
 		defer hub.Shutdown()
 
 		existingSKI := "existingski"
 		existingConn := mocks.NewShipConnectionInterface(t)
 		existingConn.EXPECT().RemoteSKI().Return(existingSKI).Maybe()
+		existingConn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		existingConn.EXPECT().CloseConnection(mock.AnythingOfType("bool"), mock.AnythingOfType("int"), mock.AnythingOfType("string")).Maybe()
 
 		hub.muxCon.Lock()
 		hub.connections[existingSKI] = existingConn
 		hub.muxCon.Unlock()
 
-		existingService, _ := api.NewServiceDetails(existingSKI, "", "")
-
-		// New outgoing connection should be kept
-		shouldKeep := hub.keepThisConnection(nil, false, existingService)
-		assert.True(t, shouldKeep, "should keep new connection when conditions favor it")
+		assert.Equal(t, dcAdopt, hub.doubleConnectionAction(existingSKI),
+			"SHIP 12.2.2: the bigger SKI keeps the most recent connection")
 	}
 }
 

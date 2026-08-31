@@ -6,6 +6,11 @@ import (
 
 type shipRole string
 
+// ShipRole is the exported name of the connection role type, so callers can hold a
+// role in a variable (e.g. to defer starting a connection) instead of only passing
+// the constants through directly.
+type ShipRole = shipRole
+
 const (
 	ShipRoleServer shipRole = "server"
 	ShipRoleClient shipRole = "client"

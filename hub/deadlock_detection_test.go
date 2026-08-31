@@ -8,6 +8,7 @@ import (
 
 	"github.com/enbility/ship-go/api"
 	"github.com/enbility/ship-go/mocks"
+	"github.com/enbility/ship-go/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -19,11 +20,13 @@ func TestHubMutexOrderingDeadlock(t *testing.T) {
 	// Create test connections
 	conn1 := mocks.NewShipConnectionInterface(t)
 	conn1.EXPECT().RemoteSKI().Return("ski-1").Maybe()
+	conn1.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 	conn1.EXPECT().DataHandler().Return(nil).Maybe()
 	conn1.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 	conn2 := mocks.NewShipConnectionInterface(t)
 	conn2.EXPECT().RemoteSKI().Return("ski-2").Maybe()
+	conn2.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 	conn2.EXPECT().DataHandler().Return(nil).Maybe()
 	conn2.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
@@ -83,11 +86,13 @@ func TestConnectionRegistrationRace(t *testing.T) {
 		// Create connections for this iteration
 		conn1 := mocks.NewShipConnectionInterface(t)
 		conn1.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn1.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn1.EXPECT().DataHandler().Return(nil).Maybe()
 		conn1.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		conn2 := mocks.NewShipConnectionInterface(t)
 		conn2.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn2.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn2.EXPECT().DataHandler().Return(nil).Maybe()
 		conn2.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
@@ -167,11 +172,16 @@ func TestAtomicUnregisterIfMatch(t *testing.T) {
 		// Create connections
 		conn1 := mocks.NewShipConnectionInterface(t)
 		conn1.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn1.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn1.EXPECT().DataHandler().Return(nil).Maybe()
+		// registering conn2 for the same SKI displaces conn1, which is then retired
+		conn1.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		conn2 := mocks.NewShipConnectionInterface(t)
 		conn2.EXPECT().RemoteSKI().Return(testSKI).Maybe()
+		conn2.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn2.EXPECT().DataHandler().Return(nil).Maybe()
+		conn2.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Register first connection
 		hub.registerConnection(conn1)
@@ -242,6 +252,7 @@ func TestHubStressWithAllOperations(t *testing.T) {
 
 		conn := mocks.NewShipConnectionInterface(t)
 		conn.EXPECT().RemoteSKI().Return(ski).Maybe()
+		conn.EXPECT().ShipHandshakeState().Return(model.SmeHelloState, nil).Maybe()
 		conn.EXPECT().DataHandler().Return(nil).Maybe()
 		conn.EXPECT().CloseConnection(mock.Anything, mock.Anything, mock.Anything).Maybe()
 		connections[i] = conn

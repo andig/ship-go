@@ -411,15 +411,15 @@ func TestStartWebsocketServer(t *testing.T) {
 	}
 }
 
-// TestKeepThisConnectionBasics tests basic double connection prevention
-func TestKeepThisConnectionBasics(t *testing.T) {
+// TestDoubleConnectionActionBasics tests basic double connection prevention
+func TestDoubleConnectionActionBasics(t *testing.T) {
 	t.Run("no_existing_connection", func(t *testing.T) {
 		hub := setupTestHubForTimer(t)
 		hub.localService, _ = api.NewServiceDetails("localski", "", "")
 
 		remoteService, _ := api.NewServiceDetails("remoteski", "", "")
-		keep := hub.keepThisConnection(nil, true, remoteService)
-		assert.True(t, keep, "should keep when no existing connection")
+		assert.Equal(t, dcAdopt, hub.doubleConnectionAction(remoteService.SKI()),
+			"should adopt when no existing connection")
 	})
 }
 
