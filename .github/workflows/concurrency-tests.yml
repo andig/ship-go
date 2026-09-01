@@ -128,7 +128,8 @@ jobs:
       - name: Run Race Detection Tests (GOMAXPROCS=${{ matrix.gomaxprocs }})
         run: |
           echo "Running race detection with GOMAXPROCS=${{ matrix.gomaxprocs }}..."
-          go test -race -timeout=90s -count=3 ./ship ./hub
+          # -timeout is per test binary: ./hub needs ~30s per -race run, so -count=3 needs >90s
+          go test -race -timeout=300s -count=3 ./ship ./hub
         env:
           GOMAXPROCS: ${{ matrix.gomaxprocs }}
 
